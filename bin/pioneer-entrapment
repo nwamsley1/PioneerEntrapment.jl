@@ -1,0 +1,5 @@
+#!/usr/bin/env julia
+# Lightweight launcher for PioneerEntrapment CLI
+
+import PioneerEntrapment
+exit(PioneerEntrapment.julia_main(ARGS))

@@ -1,0 +1,14 @@
+# Julia artifacts
+*.jl.cov
+*.jl.*.cov
+*.jl.mem
+.DS_Store
+/Manifest.toml
+/docs/build/
+/docs/site/
+/.idea/
+/.vscode/
+*.arrow
+*.png
+*.pdf
+efdr_out/
