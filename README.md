@@ -1,5 +1,9 @@
 # PioneerEntrapment.jl
 
+[![CI](https://github.com/nwamsley1/PioneerEntrapment.jl/actions/workflows/ci.yml/badge.svg)](https://github.com/nwamsley1/PioneerEntrapment.jl/actions/workflows/ci.yml)
+[![Docs](https://img.shields.io/badge/docs-dev-blue.svg)](https://nwamsley1.github.io/PioneerEntrapment.jl/)
+[![codecov](https://codecov.io/gh/nwamsley1/PioneerEntrapment.jl/branch/main/graph/badge.svg)](https://codecov.io/gh/nwamsley1/PioneerEntrapment.jl)
+
 Entrapment-based empirical FDR analysis for DIA proteomics (Pioneer/DIA-NN).
 
 - Inputs: precursor-level Pioneer results + spectral library (for precursor EFDR), or protein-level outputs (Pioneer/DIA-NN) for protein EFDR.
@@ -55,7 +59,7 @@ bin/pioneer-entrapment-batch --base-dir <BASE> --library <LIB> --dry-run
 ```
 
 License: MIT
- 
+
 ## Example: Julia REPL on local data
 
 This example runs EFDR from a Julia REPL using a .poin library directory (auto-detects `precursors_table.arrow`) and a results folder with `precursors_long.arrow`.
@@ -87,3 +91,69 @@ run_efdr_analysis(precursors, library;
 Notes
 - Passing the library as the `.poin.poin` directory is supported; the loader resolves `precursors_table.arrow` internally.
 - Prefer `precursors_long.arrow` when available; `.tsv` also works.
+
+## Using Revise for live reloads
+
+To avoid restarting Julia on code changes:
+
+```julia
+using Pkg; Pkg.add("Revise")  # one-time
+using Revise
+using PioneerEntrapment
+
+# Run an example script (re-runs on each includet call)
+Revise.includet("scripts/replicate_plot_example.txt")
+
+# Edit files under src/ and save; then re-run
+Revise.includet("scripts/replicate_plot_example.txt")
+```
+
+## Multi-run comparison (replicates)
+
+Compare EFDR curves from multiple runs on a single plot. Colors indicate method (blue=Combined, red=Paired); each replicate is an additional solid line.
+
+```julia
+using PioneerEntrapment
+
+library = "/path/to/library/.poin/.poin"  # resolves precursors_table.arrow inside
+rep1 = "/path/to/run1/precursors_long.arrow"
+rep2 = "/path/to/run2/precursors_long.arrow"
+
+replicates = [
+  (precursor_results_path=rep1, library_precursors_path=library, label="run1"),
+  (precursor_results_path=rep2, library_precursors_path=library, label="run2"),
+]
+
+run_efdr_replicate_plots(replicates;
+  output_dir="./efdr_compare",
+  r_lib=1.0,
+  paired_stride=10,
+  plot_formats=[:png, :pdf],
+  verbose=true,
+)
+```
+
+Outputs are written to the `output_dir` for each score (e.g., `efdr_comparison_replicates_global_prob.png`).
+
+CLI via config
+
+- JSON:
+  - bin/pioneer-entrapment --mode replicates \
+    --replicates-config scripts/replicates_example.json \
+    --outdir ./efdr_compare --paired-step 10
+- YAML (requires YAML.jl):
+  - bin/pioneer-entrapment --mode replicates \
+    --replicates-config scripts/replicates_example.yaml \
+    --outdir ./efdr_compare --paired-step 10
+
+JSON expects an array of objects. YAML expects a top-level key `replicates:` with a list. Each item needs:
+- `precursor_results_path`
+- `library_precursors_path`
+- `label` (optional)
+
+## Vector-friendly PDF output
+
+- Backend: Plots.jl with GR. The code sets `GR.setcharquality(0)` so text remains editable in Illustrator.
+- Font: figures default to `fontfamily="Helvetica"`. Change globally with `using Plots; Plots.default(fontfamily="Arial")` or pass `fontfamily` to plotting calls.
+- Formats: include `:pdf` in `plot_formats` (e.g., `plot_formats=[:png, :pdf]`) to save vector PDFs.
+- Tip: ensure the chosen font is installed on your system for best Illustrator compatibility.

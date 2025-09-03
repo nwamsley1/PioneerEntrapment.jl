@@ -73,6 +73,99 @@ function _load_table(path::AbstractString)
 end
 
 """
+    run_efdr_replicate_plots(replicates; output_dir="efdr_out", score_qval_pairs=[(:global_prob, :global_qval), (:prec_prob, :qval)], r_lib=1.0, paired_stride=5, plot_formats=[:png,:pdf], verbose=true)
+
+Compute EFDR for multiple (precursor_results_path, library_precursors_path) replicates and plot on shared figures.
+
+`replicates` is a Vector of NamedTuples with fields:
+- `precursor_results_path::String`
+- `library_precursors_path::String`
+- `label::String` (optional, used in plot legend)
+"""
+function run_efdr_replicate_plots(replicates::Vector; output_dir::String="efdr_out",
+                                  score_qval_pairs::Vector{Tuple{Symbol,Symbol}}=[(:global_prob, :global_qval), (:prec_prob, :qval)],
+                                  r_lib::Float64=1.0, paired_stride::Int=5,
+                                  plot_formats::Vector{Symbol}=[:png, :pdf], verbose::Bool=true)
+    # Prepare per-score collections of replicate dataframes and labels
+    pairdfs = Dict{Symbol, Vector{DataFrame}}()
+    labels_map = Dict{Symbol, Vector{String}}()
+    for (score_col, _) in score_qval_pairs
+        pairdfs[score_col] = DataFrame[]
+        labels_map[score_col] = String[]
+    end
+
+    for (idx, rep) in enumerate(replicates)
+        # Support NamedTuple with required fields
+        pr_path = get(rep, :precursor_results_path, getfield(rep, :precursor_results_path))
+        lib_path = get(rep, :library_precursors_path, getfield(rep, :library_precursors_path))
+        label = haskey(rep, :label) ? rep.label : "rep$(idx)"
+
+        verbose && println("[rep$(idx)] Loading data...")
+        prec_results = _load_table(pr_path)
+        library_precursors = _load_table(lib_path)
+
+        # Filter non-targets if present
+        if hasproperty(prec_results, :target)
+            filter!(x -> x.target, prec_results)
+        end
+
+        if !hasproperty(library_precursors, :mod_key)
+            library_precursors[!, :mod_key] = map(x -> getModKey(x), library_precursors.structural_mods)
+        end
+        assign_entrapment_pairs!(library_precursors)
+        add_entrap_pair_ids!(prec_results, library_precursors)
+
+        # Identify which requested pairs are "global" vs per-file
+        global_pairs = [(s,q) for (s,q) in score_qval_pairs if occursin("global", String(s))]
+        perfile_pairs = [(s,q) for (s,q) in score_qval_pairs if !occursin("global", String(s))]
+
+        # Per-file EFDRs
+        if !isempty(perfile_pairs)
+            add_original_target_scores!(prec_results, library_precursors, [s for (s,_) in perfile_pairs])
+            add_efdr_columns!(prec_results, library_precursors; score_qval_pairs=perfile_pairs, r=r_lib, paired_stride=paired_stride)
+            for (s, _) in perfile_pairs
+                # Push only if EFDR columns exist
+                for method_type in (CombinedEFDR, PairedEFDR)
+                    method_name = method_type == CombinedEFDR ? "combined" : "paired"
+                    efdr_col = Symbol(String(s) * "_" * method_name * "_efdr")
+                    if hasproperty(prec_results, efdr_col)
+                        push!(pairdfs[s], prec_results)
+                        push!(labels_map[s], label)
+                        break
+                    end
+                end
+            end
+        end
+
+        # Global EFDRs
+        if !isempty(global_pairs)
+            global_df = create_global_results_df(prec_results; score_col=first(global_pairs)[1])
+            add_original_target_scores!(global_df, library_precursors, [s for (s,_) in global_pairs])
+            add_efdr_columns!(global_df, library_precursors; score_qval_pairs=global_pairs, r=r_lib, paired_stride=paired_stride)
+            for (s, _) in global_pairs
+                for method_type in (CombinedEFDR, PairedEFDR)
+                    method_name = method_type == CombinedEFDR ? "combined" : "paired"
+                    efdr_col = Symbol(String(s) * "_" * method_name * "_efdr")
+                    if hasproperty(global_df, efdr_col)
+                        push!(pairdfs[s], global_df)
+                        push!(labels_map[s], label)
+                        break
+                    end
+                end
+            end
+        end
+    end
+
+    # Save per-pair replicate plots
+    save_efdr_replicate_plots(pairdfs, output_dir; score_qval_pairs=score_qval_pairs, replicate_labels_map=labels_map, formats=plot_formats)
+    return (
+        dataframes_by_score = pairdfs,
+        labels_by_score = labels_map,
+        output_dir = output_dir,
+    )
+end
+
+"""
     run_efdr_analysis(prec_results_path::String, library_precursors_path::String;
                       output_dir::String="efdr_out",
                       method_types=[CombinedEFDR, PairedEFDR],
@@ -339,7 +432,7 @@ function run_protein_efdr_analysis(protein_results_path::String;
                                   score_qval_pairs::Vector{Tuple{Symbol,Symbol}}=[(:global_pg_score, :global_qval), (:pg_score, :qval)],
                                   r_lib::Float64=1.0,
                                   paired_stride::Int=5,
-                                  plot_formats::Vector{Symbol}=[:png, :pdf],
+                                  plot_formats::AbstractVector=[:png, :pdf],
                                   verbose::Bool=true)
 
     mkpath(output_dir)
@@ -387,6 +480,9 @@ function run_protein_efdr_analysis(protein_results_path::String;
         global_results_df = create_global_protein_results_df(protein_results; score_col=global_scores[1])
         verbose && println("Global dataframe has $(nrow(global_results_df)) unique proteins")
     end
+
+    # Normalize formats to Vector{Symbol}
+    plot_formats = isempty(plot_formats) ? Symbol[] : Symbol.(plot_formats)
 
     if !isempty(perfile_scores)
         verbose && println("Processing per-file protein scores...")

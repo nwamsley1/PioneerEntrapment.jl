@@ -18,6 +18,8 @@ Usage examples:
     --outdir out
 """
 
+# Optional parsers for replicates config
+
 function _parse_args(args)::Dict{String,Any}
     d = Dict{String,Any}()
     i = 1
@@ -47,6 +49,8 @@ function _parse_args(args)::Dict{String,Any}
             d["plot_formats"] = Symbol.(split(take(), ","))
         elseif a == "--paired-step" || a == "--paired-stride"
             d["paired_step"] = parse(Int, take())
+        elseif a == "--replicates-config"
+            d["replicates_config"] = take()
         elseif a == "--verbose"
             d["verbose"] = true
         elseif a == "-h" || a == "--help"
@@ -69,6 +73,7 @@ Required (depending on mode):
   --precursor-results PATH         (for precursor or both)
   --library PATH                   (for precursor or both)
   --protein-results PATH           (for protein or both)
+  --replicates-config PATH         (JSON/YAML/TOML list for replicates mode)
 
 Optional:
   --outdir PATH                    (default: efdr_out)
@@ -78,6 +83,43 @@ Optional:
   --verbose                        (enable verbose logging)
   -h, --help
 """
+end
+
+# Load replicate spec file: supports JSON (.json), YAML (.yml/.yaml), or TOML (.toml)
+function _load_replicates_config(path::AbstractString)
+    lower = lowercase(path)
+    if endswith(lower, ".json")
+        if isdefined(Main, :JSON)
+            data = Main.JSON.parsefile(path)
+        else
+            error("JSON.jl not available. Install with: using Pkg; Pkg.add(\"JSON\"); then `using JSON` before calling, or use a TOML config.")
+        end
+    elseif endswith(lower, ".yaml") || endswith(lower, ".yml")
+        if isdefined(Main, :YAML)
+            data = Main.YAML.load_file(path)
+        else
+            error("YAML.jl not available. Install with: using Pkg; Pkg.add(\"YAML\"); then `using YAML` before calling, or use a TOML config.")
+        end
+    elseif endswith(lower, ".toml")
+        data = Base.TOML.parsefile(path)
+        data = get(data, "replicates", data)
+    else
+        error("Unsupported config extension for $path. Use .json, .yaml/.yml, or .toml")
+    end
+    # Normalize to vector of dict-like entries
+    reps = Vector{Any}(data)
+    normalized = Vector{NamedTuple}(undef, length(reps))
+    for (i, r) in enumerate(reps)
+        # Allow keys with different casings
+        pr = get(r, "precursor_results_path", get(r, :precursor_results_path, nothing))
+        lib = get(r, "library_precursors_path", get(r, :library_precursors_path, nothing))
+        lbl = get(r, "label", get(r, :label, "rep$(i)"))
+        if pr === nothing || lib === nothing
+            error("Replicate #$i is missing required precursor_results_path or library_precursors_path")
+        end
+        normalized[i] = (precursor_results_path=String(pr), library_precursors_path=String(lib), label=String(lbl))
+    end
+    return normalized
 end
 
 function julia_main(args)::Int
@@ -92,6 +134,16 @@ function julia_main(args)::Int
         plot_formats = get(parsed, "plot_formats", Symbol[:png, :pdf])
         paired_step = get(parsed, "paired_step", 5)
         verbose = get(parsed, "verbose", true)
+
+        if mode == "replicates" || haskey(parsed, "replicates_config")
+            if !haskey(parsed, "replicates_config")
+                println("Missing required --replicates-config for replicates mode\n\n" * usage())
+                return 2
+            end
+            reps = _load_replicates_config(parsed["replicates_config"])
+            run_efdr_replicate_plots(reps; output_dir=outdir, r_lib=r_lib, paired_stride=paired_step, plot_formats=plot_formats, verbose=verbose)
+            return 0
+        end
 
         if mode == "precursor"
             pr = get(parsed, "precursor_results", nothing)

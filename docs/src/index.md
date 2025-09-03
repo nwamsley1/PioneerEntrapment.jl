@@ -67,3 +67,61 @@ run_efdr_analysis(precursors, library;
 Notes
 - Passing the library as the `.poin.poin` directory is supported; the loader resolves `precursors_table.arrow` internally.
 - Prefer `precursors_long.arrow` when available; `.tsv` also works.
+
+## Live Reload with Revise
+
+```julia
+using Pkg; Pkg.add("Revise")
+using Revise
+using PioneerEntrapment
+
+Revise.includet("scripts/replicate_plot_example.txt")
+
+# after edits in src/, just call again
+Revise.includet("scripts/replicate_plot_example.txt")
+```
+
+## Multi-run comparison (replicates)
+
+Plot EFDR from multiple runs in a single figure (one color per method, solid lines per replicate).
+
+```julia
+using PioneerEntrapment
+
+library = "/path/to/library/.poin/.poin"
+rep1 = "/path/to/run1/precursors_long.arrow"
+rep2 = "/path/to/run2/precursors_long.arrow"
+
+replicates = [
+  (precursor_results_path=rep1, library_precursors_path=library, label="run1"),
+  (precursor_results_path=rep2, library_precursors_path=library, label="run2"),
+]
+
+run_efdr_replicate_plots(replicates;
+  output_dir="./efdr_compare",
+  r_lib=1.0,
+  paired_stride=10,
+  plot_formats=[:png, :pdf],
+  verbose=true,
+)
+```
+
+See the output directory for files named like `efdr_comparison_replicates_global_prob.png`.
+
+### CLI via config
+
+```bash
+# JSON
+bin/pioneer-entrapment --mode replicates \
+  --replicates-config scripts/replicates_example.json \
+  --outdir ./efdr_compare --paired-step 10
+
+# YAML (requires YAML.jl)
+bin/pioneer-entrapment --mode replicates \
+  --replicates-config scripts/replicates_example.yaml \
+  --outdir ./efdr_compare --paired-step 10
+```
+
+JSON expects an array of objects. YAML expects a top-level `replicates:` list with objects containing `precursor_results_path`, `library_precursors_path`, and optional `label`.
+\n+## Vector-friendly PDF output
+\n+- Plots.jl + GR: text set to be editable (`GR.setcharquality(0)`).\n+- Default font is Helvetica; override with `using Plots; Plots.default(fontfamily=\"Arial\")` or pass `fontfamily` to plot calls.\n+- Include `:pdf` in `plot_formats` to save vector PDFs.
