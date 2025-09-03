@@ -2,6 +2,15 @@ using Plots
 using DataFrames
 using Statistics
 
+# Try to configure GR backend for vector-friendly PDF text (editable in Illustrator)
+try
+    import GR
+    # 0 = string (stroke), 1 = character outline, 2 = filled, 3 = polygon
+    GR.setcharquality(0)
+catch
+    # If GR is not the active backend, this is a no-op
+end
+
 function _auto_axis_limits(df::DataFrame, qval_col::Symbol, efdr_cols::Vector{Symbol})
     xvals = skipmissing(df[!, qval_col])
     xmax = maximum(xvals; init=0.0)
@@ -16,9 +25,9 @@ function _auto_axis_limits(df::DataFrame, qval_col::Symbol, efdr_cols::Vector{Sy
 end
 
 function plot_efdr_vs_qval(df::DataFrame, qval_col::Symbol, efdr_cols::Vector{Symbol};
-                          title="Empirical FDR vs Q-value",
-                          xlabel="Q-value",
-                          ylabel="Empirical FDR",
+                          title="Entrapment vs Decoy FDR",
+                          xlabel="Decoy FDR",
+                          ylabel="Entrapment FDR",
                           labels=nothing,
                           colors=nothing,
                           xlims=nothing,
@@ -33,7 +42,7 @@ function plot_efdr_vs_qval(df::DataFrame, qval_col::Symbol, efdr_cols::Vector{Sy
         xlims = isnothing(xlims) ? ax_x : xlims
         ylims = isnothing(ylims) ? ax_y : ylims
     end
-    p = plot(title=title, xlabel=xlabel, ylabel=ylabel, xlims=xlims, ylims=ylims, legend=legend, size=(600, 500), dpi=300)
+    p = plot(title=title, xlabel=xlabel, ylabel=ylabel, xlims=xlims, ylims=ylims, legend=legend, size=(600, 500), dpi=300, fontfamily="Helvetica")
     if diagonal
         max_val = min(xlims[2], ylims[2])
         plot!(p, [0, max_val], [0, max_val], label="y=x", linestyle=:dash, color=:gray, alpha=0.5)
@@ -109,7 +118,7 @@ function plot_efdr_comparison_replicates(dfs::Vector{DataFrame}, score_col::Symb
                                          method_types::Vector=[CombinedEFDR, PairedEFDR],
                                          replicate_labels::Vector{String}=String[],
                                          method_colors=Dict(CombinedEFDR=>:blue, PairedEFDR=>:red),
-                                         title="EFDR Comparison Across Replicates",
+                                         title="Entrapment vs Decoy FDR (Replicates)",
                                          legend=:bottomright,
                                          linewidth::Real=1.5)
     # Validate labels
@@ -130,7 +139,7 @@ function plot_efdr_comparison_replicates(dfs::Vector{DataFrame}, score_col::Symb
         global_x = (0.0, max(global_x[2], ax_x[2]))
         global_y = (0.0, max(global_y[2], ax_y[2]))
     end
-    p = plot(title=title, xlabel="Q-value", ylabel="Empirical FDR", xlims=global_x, ylims=global_y, legend=legend, size=(700, 550), dpi=300)
+    p = plot(title=title, xlabel="Decoy FDR", ylabel="Entrapment FDR", xlims=global_x, ylims=global_y, legend=legend, size=(700, 550), dpi=300, fontfamily="Helvetica")
     max_val = min(global_x[2], global_y[2])
     plot!(p, [0, max_val], [0, max_val], label="y=x", linestyle=:dash, color=:gray, alpha=0.5)
 
