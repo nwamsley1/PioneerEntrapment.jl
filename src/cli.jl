@@ -18,6 +18,8 @@ Usage examples:
     --outdir out
 """
 
+# Optional parsers for replicates config
+
 function _parse_args(args)::Dict{String,Any}
     d = Dict{String,Any}()
     i = 1
@@ -87,21 +89,19 @@ end
 function _load_replicates_config(path::AbstractString)
     lower = lowercase(path)
     if endswith(lower, ".json")
-        try
-            import JSON
-        catch
-            error("JSON not found. Install with: using Pkg; Pkg.add(\"JSON\")")
+        if isdefined(Main, :JSON)
+            data = Main.JSON.parsefile(path)
+        else
+            error("JSON.jl not available. Install with: using Pkg; Pkg.add(\"JSON\"); then `using JSON` before calling, or use a TOML config.")
         end
-        data = JSON.parsefile(path)
     elseif endswith(lower, ".yaml") || endswith(lower, ".yml")
-        try
-            import YAML
-        catch
-            error("YAML not found. Install with: using Pkg; Pkg.add(\"YAML\")")
+        if isdefined(Main, :YAML)
+            data = Main.YAML.load_file(path)
+        else
+            error("YAML.jl not available. Install with: using Pkg; Pkg.add(\"YAML\"); then `using YAML` before calling, or use a TOML config.")
         end
-        data = YAML.load_file(path)
     elseif endswith(lower, ".toml")
-        data = TOML.parsefile(path)
+        data = Base.TOML.parsefile(path)
         data = get(data, "replicates", data)
     else
         error("Unsupported config extension for $path. Use .json, .yaml/.yml, or .toml")
