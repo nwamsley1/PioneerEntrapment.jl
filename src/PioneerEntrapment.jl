@@ -26,7 +26,7 @@ include("api.jl")
 include("cli.jl")
 
 # Re-exports (public API)
-export run_efdr_analysis, run_protein_efdr_analysis, run_both_analyses, run_efdr_replicate_plots
+export run_efdr_analysis, run_protein_efdr_analysis, run_both_analyses, run_efdr_plots, run_efdr_replicate_plots
 
 # Types
 export EFDRMethod, CombinedEFDR, PairedEFDR

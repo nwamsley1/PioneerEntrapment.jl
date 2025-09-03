@@ -73,6 +73,52 @@ function _load_table(path::AbstractString)
 end
 
 """
+    run_efdr_plots(results_dir::String, library_path::String; output_dir=joinpath(results_dir, "efdr_out"), r_lib=1.0, paired_stride=5, plot_formats=[:png,:pdf], verbose=true)
+
+Convenience entry point that looks for standard filenames in `results_dir`:
+- precursors_long.arrow (or .tsv) for precursor-level
+- protein_groups_long.arrow (or .tsv) for protein-level
+Runs the appropriate analyses, writing outputs into `output_dir` (or subfolders if both).
+"""
+function run_efdr_plots(results_dir::String, library_path::String;
+                        output_dir::String=joinpath(results_dir, "efdr_out"),
+                        r_lib::Float64=1.0,
+                        paired_stride::Int=5,
+                        plot_formats::Vector{Symbol} = [:png, :pdf],
+                        verbose::Bool=true)
+    prec = if isfile(joinpath(results_dir, "precursors_long.arrow"))
+        joinpath(results_dir, "precursors_long.arrow")
+    elseif isfile(joinpath(results_dir, "precursors_long.tsv"))
+        joinpath(results_dir, "precursors_long.tsv")
+    else
+        nothing
+    end
+    prot = if isfile(joinpath(results_dir, "protein_groups_long.arrow"))
+        joinpath(results_dir, "protein_groups_long.arrow")
+    elseif isfile(joinpath(results_dir, "protein_groups_long.tsv"))
+        joinpath(results_dir, "protein_groups_long.tsv")
+    else
+        nothing
+    end
+    if prec !== nothing && prot !== nothing
+        return run_both_analyses(; precursor_results_path=prec,
+                                    library_precursors_path=library_path,
+                                    protein_results_path=prot,
+                                    output_dir=output_dir,
+                                    r_lib=r_lib,
+                                    paired_stride=paired_stride,
+                                    plot_formats=plot_formats,
+                                    verbose=verbose)
+    elseif prec !== nothing
+        return run_efdr_analysis(prec, library_path; output_dir=output_dir, r_lib=r_lib, paired_stride=paired_stride, plot_formats=plot_formats, verbose=verbose)
+    elseif prot !== nothing
+        return run_protein_efdr_analysis(prot; output_dir=output_dir, r_lib=r_lib, paired_stride=paired_stride, plot_formats=plot_formats, verbose=verbose)
+    else
+        error("No standard result files found in $(results_dir). Expected precursors_long.(arrow|tsv) and/or protein_groups_long.(arrow|tsv)")
+    end
+end
+
+"""
     run_efdr_replicate_plots(replicates; output_dir="efdr_out", score_qval_pairs=[(:global_prob, :global_qval), (:prec_prob, :qval)], r_lib=1.0, paired_stride=5, plot_formats=[:png,:pdf], verbose=true)
 
 Compute EFDR for multiple (precursor_results_path, library_precursors_path) replicates and plot on shared figures.
@@ -84,6 +130,7 @@ Compute EFDR for multiple (precursor_results_path, library_precursors_path) repl
 """
 function run_efdr_replicate_plots(replicates::Vector; output_dir::String="efdr_out",
                                   score_qval_pairs::Vector{Tuple{Symbol,Symbol}}=[(:global_prob, :global_qval), (:prec_prob, :qval)],
+                                  protein_score_qval_pairs::Vector{Tuple{Symbol,Symbol}}=[(:global_pg_score, :global_qval), (:pg_score, :qval)],
                                   r_lib::Float64=1.0, paired_stride::Int=5,
                                   plot_formats::Vector{Symbol}=[:png, :pdf], verbose::Bool=true)
     # Prepare per-score collections of replicate dataframes and labels
@@ -92,6 +139,10 @@ function run_efdr_replicate_plots(replicates::Vector; output_dir::String="efdr_o
     for (score_col, _) in score_qval_pairs
         pairdfs[score_col] = DataFrame[]
         labels_map[score_col] = String[]
+    end
+    for (score_col, _) in protein_score_qval_pairs
+        pairdfs[score_col] = get(pairdfs, score_col, DataFrame[])
+        labels_map[score_col] = get(labels_map, score_col, String[])
     end
 
     for (idx, rep) in enumerate(replicates)
@@ -115,7 +166,7 @@ function run_efdr_replicate_plots(replicates::Vector; output_dir::String="efdr_o
         assign_entrapment_pairs!(library_precursors)
         add_entrap_pair_ids!(prec_results, library_precursors)
 
-        # Identify which requested pairs are "global" vs per-file
+        # Identify which requested pairs are "global" vs per-file (precursor)
         global_pairs = [(s,q) for (s,q) in score_qval_pairs if occursin("global", String(s))]
         perfile_pairs = [(s,q) for (s,q) in score_qval_pairs if !occursin("global", String(s))]
 
@@ -137,7 +188,7 @@ function run_efdr_replicate_plots(replicates::Vector; output_dir::String="efdr_o
             end
         end
 
-        # Global EFDRs
+        # Global EFDRs (precursor)
         if !isempty(global_pairs)
             global_df = create_global_results_df(prec_results; score_col=first(global_pairs)[1])
             add_original_target_scores!(global_df, library_precursors, [s for (s,_) in global_pairs])
@@ -154,10 +205,69 @@ function run_efdr_replicate_plots(replicates::Vector; output_dir::String="efdr_o
                 end
             end
         end
+
+        # Protein-level EFDRs (if protein file exists alongside the replicate)
+        # Infer a protein file path from the replicate entry if possible
+        rep_dir = if haskey(rep, :rep_dir)
+            rep[:rep_dir]
+        elseif haskey(rep, :precursor_results_path)
+            dirname(String(get(rep, :precursor_results_path, getfield(rep, :precursor_results_path))))
+        else
+            nothing
+        end
+        if rep_dir !== nothing
+            prot_path = if isfile(joinpath(rep_dir, "protein_groups_long.arrow"))
+                joinpath(rep_dir, "protein_groups_long.arrow")
+            elseif isfile(joinpath(rep_dir, "protein_groups_long.tsv"))
+                joinpath(rep_dir, "protein_groups_long.tsv")
+            else
+                nothing
+            end
+            if prot_path !== nothing
+                # Load and compute protein EFDR columns
+                protein_results = _load_table(prot_path)
+                # Separate global/per-file
+                prot_global_pairs = [(s,q) for (s,q) in protein_score_qval_pairs if occursin("global", String(s))]
+                prot_perfile_pairs = [(s,q) for (s,q) in protein_score_qval_pairs if !occursin("global", String(s))]
+                if !isempty(prot_perfile_pairs)
+                    add_original_target_protein_scores!(protein_results, [s for (s,_) in prot_perfile_pairs])
+                    add_protein_efdr_columns!(protein_results; score_qval_pairs=prot_perfile_pairs, r=r_lib, paired_stride=paired_stride)
+                    for (s, _) in prot_perfile_pairs
+                        for method_type in (CombinedEFDR, PairedEFDR)
+                            method_name = method_type == CombinedEFDR ? "combined" : "paired"
+                            efdr_col = Symbol(String(s) * "_" * method_name * "_efdr")
+                            if hasproperty(protein_results, efdr_col)
+                                push!(pairdfs[s], protein_results)
+                                push!(labels_map[s], label)
+                                break
+                            end
+                        end
+                    end
+                end
+                if !isempty(prot_global_pairs)
+                    global_prot_df = create_global_protein_results_df(protein_results; score_col=first(prot_global_pairs)[1])
+                    add_original_target_protein_scores!(global_prot_df, [s for (s,_) in prot_global_pairs])
+                    add_protein_efdr_columns!(global_prot_df; score_qval_pairs=prot_global_pairs, r=r_lib, paired_stride=paired_stride)
+                    for (s, _) in prot_global_pairs
+                        for method_type in (CombinedEFDR, PairedEFDR)
+                            method_name = method_type == CombinedEFDR ? "combined" : "paired"
+                            efdr_col = Symbol(String(s) * "_" * method_name * "_efdr")
+                            if hasproperty(global_prot_df, efdr_col)
+                                push!(pairdfs[s], global_prot_df)
+                                push!(labels_map[s], label)
+                                break
+                            end
+                        end
+                    end
+                end
+            end
+        end
     end
 
     # Save per-pair replicate plots
     save_efdr_replicate_plots(pairdfs, output_dir; score_qval_pairs=score_qval_pairs, replicate_labels_map=labels_map, formats=plot_formats)
+    # Also save plots for any protein score pairs that have data
+    save_efdr_replicate_plots(pairdfs, output_dir; score_qval_pairs=protein_score_qval_pairs, replicate_labels_map=labels_map, formats=plot_formats)
     return (
         dataframes_by_score = pairdfs,
         labels_by_score = labels_map,

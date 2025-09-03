@@ -131,5 +131,19 @@ JULIA_PROJECT=. bin/pioneer-entrapment --mode replicates \
   --replicates-config scripts/replicates_example.toml \
   --outdir ./efdr_compare --paired-step 10 --plot-formats png,pdf
 ```
+
+## Folder convenience (both precursor and protein)
+
+Analyze a results folder with standard filenames (precursors_long.arrow and/or protein_groups_long.arrow):
+
+```julia
+using PioneerEntrapment
+run_efdr_plots("/path/to/results", "/path/to/library/.poin/.poin";
+  output_dir=joinpath("/path/to/results", "efdr_out"),
+  paired_stride=10,
+  plot_formats=[:png, :pdf],
+  verbose=true,
+)
+```
 \n+## Vector-friendly PDF output
 \n+- Plots.jl + GR: text set to be editable (`GR.setcharquality(0)`).\n+- Default font is Helvetica; override with `using Plots; Plots.default(fontfamily=\"Arial\")` or pass `fontfamily` to plot calls.\n+- Include `:pdf` in `plot_formats` to save vector PDFs.

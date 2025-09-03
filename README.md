@@ -159,6 +159,20 @@ JULIA_PROJECT=. bin/pioneer-entrapment --mode replicates \
   --outdir ./efdr_compare --paired-step 10 --plot-formats png,pdf
 ```
 
+## Folder convenience: run both precursor and protein plots
+
+To analyze a single results folder that contains standard filenames (precursors_long.arrow and/or protein_groups_long.arrow):
+
+```julia
+using PioneerEntrapment
+run_efdr_plots("/path/to/results", "/path/to/library/.poin/.poin";
+  output_dir=joinpath("/path/to/results", "efdr_out"),
+  paired_stride=10,
+  plot_formats=[:png, :pdf],
+  verbose=true,
+)
+```
+
 ## Vector-friendly PDF output
 
 - Backend: Plots.jl with GR. The code sets `GR.setcharquality(0)` so text remains editable in Illustrator.
