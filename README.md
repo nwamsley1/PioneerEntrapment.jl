@@ -55,7 +55,7 @@ bin/pioneer-entrapment-batch --base-dir <BASE> --library <LIB> --dry-run
 ```
 
 License: MIT
- 
+
 ## Example: Julia REPL on local data
 
 This example runs EFDR from a Julia REPL using a .poin library directory (auto-detects `precursors_table.arrow`) and a results folder with `precursors_long.arrow`.
@@ -87,3 +87,19 @@ run_efdr_analysis(precursors, library;
 Notes
 - Passing the library as the `.poin.poin` directory is supported; the loader resolves `precursors_table.arrow` internally.
 - Prefer `precursors_long.arrow` when available; `.tsv` also works.
+
+## Using Revise for live reloads
+
+To avoid restarting Julia on code changes:
+
+```julia
+using Pkg; Pkg.add("Revise")  # one-time
+using Revise
+using PioneerEntrapment
+
+# Run an example script (re-runs on each includet call)
+Revise.includet("scripts/replicate_plot_example.txt")
+
+# Edit files under src/ and save; then re-run
+Revise.includet("scripts/replicate_plot_example.txt")
+```

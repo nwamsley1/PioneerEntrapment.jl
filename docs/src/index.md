@@ -67,3 +67,16 @@ run_efdr_analysis(precursors, library;
 Notes
 - Passing the library as the `.poin.poin` directory is supported; the loader resolves `precursors_table.arrow` internally.
 - Prefer `precursors_long.arrow` when available; `.tsv` also works.
+
+## Live Reload with Revise
+
+```julia
+using Pkg; Pkg.add("Revise")
+using Revise
+using PioneerEntrapment
+
+Revise.includet("scripts/replicate_plot_example.txt")
+
+# after edits in src/, just call again
+Revise.includet("scripts/replicate_plot_example.txt")
+```

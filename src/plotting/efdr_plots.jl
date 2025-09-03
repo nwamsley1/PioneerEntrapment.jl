@@ -168,5 +168,27 @@ function save_efdr_replicate_plots(dfs::Vector{DataFrame}, output_dir::String;
     end
 end
 
+function save_efdr_replicate_plots(pairdfs::Dict{Symbol, Vector{DataFrame}}, output_dir::String;
+                                   score_qval_pairs::Vector{Tuple{Symbol,Symbol}}=[(:global_prob, :global_qval), (:prec_prob, :qval)],
+                                   method_types::Vector=[CombinedEFDR, PairedEFDR],
+                                   replicate_labels_map::Dict{Symbol, Vector{String}}=Dict{Symbol, Vector{String}}(),
+                                   formats::Vector{Symbol}=[:png, :pdf])
+    mkpath(output_dir)
+    for (score_col, qval_col) in score_qval_pairs
+        dfs = get(pairdfs, score_col, DataFrame[])
+        if isempty(dfs)
+            @warn "No replicate data available for $(score_col); skipping."
+            continue
+        end
+        labels = get(replicate_labels_map, score_col, String[])
+        p = plot_efdr_comparison_replicates(dfs, score_col, qval_col; method_types=method_types, replicate_labels=labels)
+        for format in formats
+            filename = joinpath(output_dir, "efdr_comparison_replicates_$(score_col).$(format)")
+            savefig(p, filename)
+            println("Saved: $filename")
+        end
+    end
+end
+
 export plot_efdr_vs_qval, plot_efdr_comparison, plot_multiple_efdr_comparisons, save_efdr_plots,
        plot_efdr_comparison_replicates, save_efdr_replicate_plots
