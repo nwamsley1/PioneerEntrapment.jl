@@ -150,3 +150,10 @@ JSON expects an array of objects. YAML expects a top-level key `replicates:` wit
 - `precursor_results_path`
 - `library_precursors_path`
 - `label` (optional)
+
+## Vector-friendly PDF output
+
+- Backend: Plots.jl with GR. The code sets `GR.setcharquality(0)` so text remains editable in Illustrator.
+- Font: figures default to `fontfamily="Helvetica"`. Change globally with `using Plots; Plots.default(fontfamily="Arial")` or pass `fontfamily` to plotting calls.
+- Formats: include `:pdf` in `plot_formats` (e.g., `plot_formats=[:png, :pdf]`) to save vector PDFs.
+- Tip: ensure the chosen font is installed on your system for best Illustrator compatibility.

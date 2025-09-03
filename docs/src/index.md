@@ -123,3 +123,5 @@ bin/pioneer-entrapment --mode replicates \
 ```
 
 JSON expects an array of objects. YAML expects a top-level `replicates:` list with objects containing `precursor_results_path`, `library_precursors_path`, and optional `label`.
+\n+## Vector-friendly PDF output
+\n+- Plots.jl + GR: text set to be editable (`GR.setcharquality(0)`).\n+- Default font is Helvetica; override with `using Plots; Plots.default(fontfamily=\"Arial\")` or pass `fontfamily` to plot calls.\n+- Include `:pdf` in `plot_formats` to save vector PDFs.
