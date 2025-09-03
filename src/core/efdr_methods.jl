@@ -40,46 +40,82 @@ PairedEFDR(score, original_target_score, entrapment_label, qval; r=1.0) = Paired
 
 """
     calculate_efdr(method::EFDRMethod)
+
+Calculate empirical FDR using the data stored in the method struct.
+
+Methods:
+- CombinedEFDR: Standard combined empirical FDR calculation
+- PairedEFDR: Paired empirical FDR that considers score relationships
+
+Returns a vector of EFDR values aligned to the input order.
 """
 function calculate_efdr(method::CombinedEFDR)
+    # Sort by q-value (ascending) first, then by score (descending) to break ties
     sort_indices = sortperm(collect(zip(-method.score, method.qval)))
+
     entrapment_fdr = zeros(eltype(method.qval), length(method.qval))
     Nτ = 0
     Nϵ = 0
     for i in sort_indices
+        # Determine if this is a target or entrapment
         is_original_target = iszero(method.entrapment_label[i])
+
         if is_original_target
             Nτ += 1
         else
             Nϵ += 1
         end
+
+        # Avoid division by zero and cap at 1.0
         if Nϵ + Nτ > 0
-            entrapment_fdr[i] = min(1.0, (Nϵ*(1 + 1/method.r)) / (Nϵ + Nτ))
+            entrapment_fdr[i] = min(1.0, (Nϵ * (1 + 1/method.r)) / (Nϵ + Nτ))
         else
             entrapment_fdr[i] = 0.0
         end
     end
+
+    # Enforce monotonicity over the sorted order (cumulative minimum in reverse)
+    fdr = Inf
+    @inbounds @fastmath for i in reverse(sort_indices)
+        if entrapment_fdr[i] > fdr
+            entrapment_fdr[i] = fdr
+        else
+            fdr = entrapment_fdr[i]
+        end
+    end
+
     return entrapment_fdr
 end
 
 function calculate_efdr(method::PairedEFDR; stride::Int=5)
+    # Sort by q-value (ascending) first, then by score (descending) to break ties
     sort_indices = sortperm(collect(zip(-method.score, method.qval)))
+
     entrapment_fdr = zeros(eltype(method.qval), length(method.qval))
-    total_ops = sum(1:stride:length(sort_indices))
+    n = length(sort_indices)
+
+    # Normalize stride: 1 means compute at every index (full O(n^2)); >1 samples
+    stride = stride <= 0 ? 1 : stride
+    ks = collect(1:stride:n)
+    if ks[end] != n
+        push!(ks, n)
+    end
+
+    total_ops = sum(ks) # approximate work for progress bar
     pb = ProgressBar(total=total_ops)
     completed_ops = 0
     last_update = 0
+
     last_k = 0
     last_value = zero(eltype(method.qval))
-    n = length(sort_indices)
-    stride <= 0 && (stride = 1)
-    for k in 1:stride:n
+    for k in ks
         Nτ = 0
         Nϵ = 0
         Nϵsτ = 0
         Nϵτs = 0
         s = method.score[sort_indices[k]]
         for j in 1:k
+            # Determine if this is a target or entrapment
             is_original_target = method.entrapment_label[sort_indices[j]] == 0
             if is_original_target
                 Nτ += 1
@@ -89,35 +125,42 @@ function calculate_efdr(method::PairedEFDR; stride::Int=5)
                 Nϵ += 1
                 if (e >= s) & (t < s)
                     Nϵsτ += 1
-                elseif  (e > t) & (t >= s)
+                elseif (e > t) & (t >= s)
                     Nϵτs += 1
                 end
             end
+            completed_ops += 1
+            if completed_ops % 1000 == 0
+                update(pb, completed_ops - last_update)
+                last_update = completed_ops
+            end
         end
-        # Compute EFDR value for this stride position
+
+        # Compute EFDR at sampled position
         value = if Nϵ + Nτ > 0
             min(1.0, (Nϵ + Nϵsτ + 2*Nϵτs) / (Nϵ + Nτ))
         else
             0.0
         end
-        # Fill forward this value for all sorted positions since last checkpoint
+
+        # Fill forward for unsampled indices since last checkpoint
         for kk in (last_k + 1):k
             entrapment_fdr[sort_indices[kk]] = value
         end
         last_k = k
         last_value = value
-        completed_ops += 1
-        if completed_ops % 1000 == 0
-            update(pb, completed_ops-last_update)
-            last_update = completed_ops
+    end
+
+    # Enforce monotonicity over the sorted order (cumulative minimum in reverse)
+    fdr = Inf
+    @inbounds @fastmath for i in reverse(sort_indices)
+        if entrapment_fdr[i] > fdr
+            entrapment_fdr[i] = fdr
+        else
+            fdr = entrapment_fdr[i]
         end
     end
-    # Fill any remaining positions with the last value
-    if last_k < n
-        for kk in (last_k + 1):n
-            entrapment_fdr[sort_indices[kk]] = last_value
-        end
-    end
+
     return entrapment_fdr
 end
 
