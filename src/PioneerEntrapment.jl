@@ -26,7 +26,7 @@ include("api.jl")
 include("cli.jl")
 
 # Re-exports (public API)
-export run_efdr_analysis, run_protein_efdr_analysis, run_both_analyses
+export run_efdr_analysis, run_protein_efdr_analysis, run_both_analyses, run_efdr_replicate_plots
 
 # Types
 export EFDRMethod, CombinedEFDR, PairedEFDR
@@ -46,7 +46,6 @@ export analyze_efdr_at_threshold, print_efdr_comparison_table
 
 # Plotting
 export plot_efdr_comparison, plot_efdr_vs_qval
-export plot_multiple_efdr_comparisons, save_efdr_plots
+export plot_multiple_efdr_comparisons, save_efdr_plots, plot_efdr_comparison_replicates, save_efdr_replicate_plots
 
 end # module
-
