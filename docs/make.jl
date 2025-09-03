@@ -13,6 +13,6 @@ makedocs(
 )
 
 deploydocs(
-    repo = "github.com/nathanwamsley/PioneerEntrapment.jl.git",
+    repo = "github.com/nwamsley1/PioneerEntrapment.jl.git",
     push_preview = true,
 )

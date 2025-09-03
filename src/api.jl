@@ -3,20 +3,71 @@ using DataFrames
 using Printf
 using Markdown
 
-# Small loader utility to accept Arrow/CSV/TSV
-local function _load_table(path::AbstractString)
+"""
+Load a tabular file into a DataFrame.
+Supports Arrow/Feather (`.arrow`, `.feather`) and delimited text (`.csv`, `.tsv`, `.txt`).
+Also accepts a directory path (e.g., a `.poin` folder) and will locate a suitable table inside,
+preferring `precursors_table.arrow`, then any `.arrow`/`.feather`, then `.tsv`/`.csv`.
+Falls back to trying Arrow, then CSV regardless of extension.
+"""
+function _load_table(path::AbstractString)
+    # If given a directory (e.g., a .poin bundle), resolve to a concrete file inside
+    if isdir(path)
+        entries = readdir(path)
+        # Priority list
+        preferred = [
+            "precursors_table.arrow",
+            "library_precursors.arrow",
+            "precursors.arrow",
+        ]
+        for name in preferred
+            if name in entries
+                path = joinpath(path, name)
+                break
+            end
+        end
+        # If no preferred name matched, pick first Arrow/Feather, else TSV/CSV
+        if isdir(path)
+            # still a dir, so choose by extension
+            arrow_like = filter(x -> endswith(lowercase(x), ".arrow") || endswith(lowercase(x), ".feather"), entries)
+            if !isempty(arrow_like)
+                path = joinpath(path, first(arrow_like))
+            else
+                txt_like = filter(x -> endswith(lowercase(x), ".tsv") || endswith(lowercase(x), ".csv"), entries)
+                if !isempty(txt_like)
+                    path = joinpath(path, first(txt_like))
+                end
+            end
+        end
+    end
+
     lower = lowercase(path)
-    if endswith(lower, [".arrow", ".feather"]) || endswith(lower, ".arrow")
-        return DataFrame(Arrow.Table(path))
+    # Prefer extension-based dispatch where possible
+    if endswith(lower, ".arrow") || endswith(lower, ".feather")
+        try
+            return DataFrame(Arrow.Table(path); copycols=true)
+        catch
+            try
+                open(path, "r") do io
+                    return DataFrame(Arrow.Table(io; mmap=false); copycols=true)
+                end
+            catch
+                return DataFrame(Arrow.Table(path; mmap=false); copycols=true)
+            end
+        end
     elseif endswith(lower, ".csv") || endswith(lower, ".tsv") || endswith(lower, ".txt")
         delim = endswith(lower, ".tsv") ? '\t' : ','
         return DataFrame(CSV.File(path; delim=delim))
     else
         # try Arrow, then CSV
         try
-            return DataFrame(Arrow.Table(path))
+            return DataFrame(Arrow.Table(path); copycols=true)
         catch
-            return DataFrame(CSV.File(path))
+            try
+                return DataFrame(Arrow.Table(path; mmap=false); copycols=true)
+            catch
+                return DataFrame(CSV.File(path))
+            end
         end
     end
 end
