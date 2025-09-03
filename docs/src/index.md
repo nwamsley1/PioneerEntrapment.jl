@@ -80,3 +80,30 @@ Revise.includet("scripts/replicate_plot_example.txt")
 # after edits in src/, just call again
 Revise.includet("scripts/replicate_plot_example.txt")
 ```
+
+## Multi-run comparison (replicates)
+
+Plot EFDR from multiple runs in a single figure (one color per method, solid lines per replicate).
+
+```julia
+using PioneerEntrapment
+
+library = "/path/to/library/.poin/.poin"
+rep1 = "/path/to/run1/precursors_long.arrow"
+rep2 = "/path/to/run2/precursors_long.arrow"
+
+replicates = [
+  (precursor_results_path=rep1, library_precursors_path=library, label="run1"),
+  (precursor_results_path=rep2, library_precursors_path=library, label="run2"),
+]
+
+run_efdr_replicate_plots(replicates;
+  output_dir="./efdr_compare",
+  r_lib=1.0,
+  paired_stride=10,
+  plot_formats=[:png, :pdf],
+  verbose=true,
+)
+```
+
+See the output directory for files named like `efdr_comparison_replicates_global_prob.png`.
