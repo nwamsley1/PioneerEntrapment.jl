@@ -432,7 +432,7 @@ function run_protein_efdr_analysis(protein_results_path::String;
                                   score_qval_pairs::Vector{Tuple{Symbol,Symbol}}=[(:global_pg_score, :global_qval), (:pg_score, :qval)],
                                   r_lib::Float64=1.0,
                                   paired_stride::Int=5,
-                                  plot_formats::Vector{Symbol}=[:png, :pdf],
+                                  plot_formats::AbstractVector=[:png, :pdf],
                                   verbose::Bool=true)
 
     mkpath(output_dir)
@@ -480,6 +480,9 @@ function run_protein_efdr_analysis(protein_results_path::String;
         global_results_df = create_global_protein_results_df(protein_results; score_col=global_scores[1])
         verbose && println("Global dataframe has $(nrow(global_results_df)) unique proteins")
     end
+
+    # Normalize formats to Vector{Symbol}
+    plot_formats = isempty(plot_formats) ? Symbol[] : Symbol.(plot_formats)
 
     if !isempty(perfile_scores)
         verbose && println("Processing per-file protein scores...")

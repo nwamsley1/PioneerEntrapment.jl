@@ -15,7 +15,9 @@ function get_complement_score(prec_results::DataFrame, row_idx::Int; score_col=:
     if ismissing(pair_id)
         return 0.0
     end
-    complement_mask = (prec_results.entrap_pair_id .== pair_id) .& (1:nrow(prec_results) .!= row_idx)
+    same_pair = coalesce.(prec_results.entrap_pair_id .== pair_id, false)
+    not_self = (1:nrow(prec_results)) .!= row_idx
+    complement_mask = same_pair .& not_self
     complement_scores = prec_results[complement_mask, score_col]
     return isempty(complement_scores) ? 0.0 : maximum(skipmissing(complement_scores), init=0.0)
 end
@@ -37,27 +39,27 @@ function add_original_target_scores!(prec_results::DataFrame, library_precursors
         error("library_precursors must have :entrapment_group_id column.")
     end
     original_target_col = Symbol(String(score_col) * "_original_target")
-    pair_to_target = Dictionary{Int, Dictionary{UInt32, @NamedTuple{target_row::UInt32,target_score::Float32}}}()
+    pair_to_target = Dictionary{Int, Dictionary{UInt32, @NamedTuple{target_row::UInt32,target_score::Float64}}}()
     for (idx, row) in enumerate(eachrow(prec_results))
         if !ismissing(row.entrap_pair_id) && !ismissing(row[score_col])
             pair_id = row.entrap_pair_id
             precursor_idx = row.precursor_idx
-            ms_file_idx = row.ms_file_idx
+            ms_file_idx = hasproperty(prec_results, :ms_file_idx) ? row.ms_file_idx : 0
             entrap_group = library_precursors.entrapment_group_id[precursor_idx]
             if entrap_group == 0
                 if !haskey(pair_to_target, ms_file_idx)
                     insert!(pair_to_target, ms_file_idx, Dictionary{UInt32, @NamedTuple{target_row::UInt32,target_score::Float32}}())
                 end
-                insert!(pair_to_target[ms_file_idx], pair_id, (target_row = UInt32(idx), target_score = row[score_col]))
+                insert!(pair_to_target[ms_file_idx], pair_id, (target_row = UInt32(idx), target_score = Float64(row[score_col])))
             end
         end
     end
-    original_target_scores = zeros(Float32, nrow(prec_results))
+    original_target_scores = zeros(Float64, nrow(prec_results))
     for (idx, row) in enumerate(eachrow(prec_results))
         if !ismissing(row.entrap_pair_id) && !ismissing(row[score_col])
             pair_id = row.entrap_pair_id
             precursor_idx = row.precursor_idx
-            ms_file_idx = row.ms_file_idx
+            ms_file_idx = hasproperty(prec_results, :ms_file_idx) ? row.ms_file_idx : 0
             entrap_group = library_precursors.entrapment_group_id[precursor_idx]
             if entrap_group == 0
                 original_target_scores[idx] = row[score_col]
@@ -106,4 +108,3 @@ function create_global_results_df(prec_results::DataFrame; score_col::Symbol=:gl
     end
     return global_df
 end
-
