@@ -130,3 +130,19 @@ run_efdr_replicate_plots(replicates;
 ```
 
 Outputs are written to the `output_dir` for each score (e.g., `efdr_comparison_replicates_global_prob.png`).
+
+CLI via config
+
+- JSON:
+  - bin/pioneer-entrapment --mode replicates \
+    --replicates-config scripts/replicates_example.json \
+    --outdir ./efdr_compare --paired-step 10
+- YAML (requires YAML.jl):
+  - bin/pioneer-entrapment --mode replicates \
+    --replicates-config scripts/replicates_example.yaml \
+    --outdir ./efdr_compare --paired-step 10
+
+JSON expects an array of objects. YAML expects a top-level key `replicates:` with a list. Each item needs:
+- `precursor_results_path`
+- `library_precursors_path`
+- `label` (optional)

@@ -1,0 +1,12 @@
+[
+  {
+    "precursor_results_path": "/Users/nathanwamsley/Data/MS_DATA/MTAC_Y_Astral/YEAST_3MIN/MTAC_Y_entrapR1_feature-fix-mbr_D_08-30-2025/precursors_long.arrow",
+    "library_precursors_path": "/Users/nathanwamsley/Data/SPEC_LIBS/entrapment_08-20-2025/altimeter_yeast_len7o40_ch2o3_mc1_MTACAstral_Aug302025_entrapR1.poin/altimeter_yeast_len7o40_ch2o3_mc1_MTACAstral_Aug302025_entrapR1.poin.poin",
+    "label": "D_08-30-2025"
+  },
+  {
+    "precursor_results_path": "/Users/nathanwamsley/Data/MS_DATA/MTAC_Y_Astral/YEAST_3MIN/MTAC_Y_entrapR1_feature-fix-mbr_C_08-30-2025/precursors_long.arrow",
+    "library_precursors_path": "/Users/nathanwamsley/Data/SPEC_LIBS/entrapment_08-20-2025/altimeter_yeast_len7o40_ch2o3_mc1_MTACAstral_Aug302025_entrapR1.poin/altimeter_yeast_len7o40_ch2o3_mc1_MTACAstral_Aug302025_entrapR1.poin.poin",
+    "label": "C_08-30-2025"
+  }
+]

@@ -107,3 +107,19 @@ run_efdr_replicate_plots(replicates;
 ```
 
 See the output directory for files named like `efdr_comparison_replicates_global_prob.png`.
+
+### CLI via config
+
+```bash
+# JSON
+bin/pioneer-entrapment --mode replicates \
+  --replicates-config scripts/replicates_example.json \
+  --outdir ./efdr_compare --paired-step 10
+
+# YAML (requires YAML.jl)
+bin/pioneer-entrapment --mode replicates \
+  --replicates-config scripts/replicates_example.yaml \
+  --outdir ./efdr_compare --paired-step 10
+```
+
+JSON expects an array of objects. YAML expects a top-level `replicates:` list with objects containing `precursor_results_path`, `library_precursors_path`, and optional `label`.
