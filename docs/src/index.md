@@ -8,7 +8,7 @@ Entrapment-based empirical FDR analysis for DIA proteomics.
 ] add https://github.com/nwamsley1/PioneerEntrapment.jl
 ```
 
-## Quick Start
+## Julia REPL (quick start)
 
 ```julia
 using PioneerEntrapment
@@ -17,7 +17,7 @@ run_protein_efdr_analysis("proteins.arrow"; output_dir="out")
 run_both_analyses(; precursor_results_path="precursors.arrow", library_precursors_path="library.arrow", protein_results_path="proteins.arrow", output_dir="out")
 ```
 
-## CLI
+## CLI (single run)
 
 ```bash
 pioneer-entrapment --mode precursor --precursor-results prec.arrow --library lib.arrow --outdir out
@@ -123,5 +123,13 @@ bin/pioneer-entrapment --mode replicates \
 ```
 
 JSON expects an array of objects. YAML expects a top-level `replicates:` list with objects containing `precursor_results_path`, `library_precursors_path`, and optional `label`.
+
+### CLI (replicates) with TOML config
+
+```bash
+JULIA_PROJECT=. bin/pioneer-entrapment --mode replicates \
+  --replicates-config scripts/replicates_example.toml \
+  --outdir ./efdr_compare --paired-step 10 --plot-formats png,pdf
+```
 \n+## Vector-friendly PDF output
 \n+- Plots.jl + GR: text set to be editable (`GR.setcharquality(0)`).\n+- Default font is Helvetica; override with `using Plots; Plots.default(fontfamily=\"Arial\")` or pass `fontfamily` to plot calls.\n+- Include `:pdf` in `plot_formats` to save vector PDFs.

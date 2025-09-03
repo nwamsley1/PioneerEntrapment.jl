@@ -10,7 +10,16 @@ Entrapment-based empirical FDR analysis for DIA proteomics (Pioneer/DIA-NN).
 - Outputs: Arrow tables with EFDR columns, Markdown reports, and plots (PNG/PDF).
 - CLI: `pioneer-entrapment` supports `precursor`, `protein`, and `both` modes.
 
-Quick start:
+From Julia (quick start):
+
+```julia
+using PioneerEntrapment
+run_efdr_analysis("precursors.arrow", "library.arrow"; output_dir="out")
+run_protein_efdr_analysis("proteins.arrow"; output_dir="out")
+run_both_analyses(; precursor_results_path="precursors.arrow", library_precursors_path="library.arrow", protein_results_path="proteins.arrow", output_dir="out")
+```
+
+CLI (single run):
 
 ```bash
 # Precursor-level (requires library)
@@ -33,15 +42,6 @@ pioneer-entrapment --mode both \
   --protein-results path/to/proteins.arrow \
   --outdir results \
   --paired-step 5
-```
-
-From Julia:
-
-```julia
-using PioneerEntrapment
-run_efdr_analysis("precursors.arrow", "library.arrow"; output_dir="out")
-run_protein_efdr_analysis("proteins.arrow"; output_dir="out")
-run_both_analyses(; precursor_results_path="precursors.arrow", library_precursors_path="library.arrow", protein_results_path="proteins.arrow", output_dir="out")
 ```
 
 Batch analysis:
@@ -150,6 +150,14 @@ JSON expects an array of objects. YAML expects a top-level key `replicates:` wit
 - `precursor_results_path`
 - `library_precursors_path`
 - `label` (optional)
+
+CLI (replicates) with TOML config (recommended):
+
+```bash
+JULIA_PROJECT=. bin/pioneer-entrapment --mode replicates \
+  --replicates-config scripts/replicates_example.toml \
+  --outdir ./efdr_compare --paired-step 10 --plot-formats png,pdf
+```
 
 ## Vector-friendly PDF output
 
