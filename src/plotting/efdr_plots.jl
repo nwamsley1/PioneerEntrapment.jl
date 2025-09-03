@@ -107,10 +107,10 @@ Colors are per method; linestyles per replicate.
 function plot_efdr_comparison_replicates(dfs::Vector{DataFrame}, score_col::Symbol, qval_col::Symbol;
                                          method_types::Vector=[CombinedEFDR, PairedEFDR],
                                          replicate_labels::Vector{String}=String[],
-                                         linestyles::Vector=[:solid, :dash, :dot, :dashdot],
                                          method_colors=Dict(CombinedEFDR=>:blue, PairedEFDR=>:red),
                                          title="EFDR Comparison Across Replicates",
-                                         legend=:bottomright)
+                                         legend=:bottomright,
+                                         linewidth::Real=1.5)
     # Validate labels
     if !isempty(replicate_labels) && length(replicate_labels) != length(dfs)
         error("replicate_labels length must match dfs length")
@@ -133,9 +133,8 @@ function plot_efdr_comparison_replicates(dfs::Vector{DataFrame}, score_col::Symb
     max_val = min(global_x[2], global_y[2])
     plot!(p, [0, max_val], [0, max_val], label="y=x", linestyle=:dash, color=:gray, alpha=0.5)
 
+    shown_label = Dict{UnionAll,Bool}(CombinedEFDR=>false, PairedEFDR=>false)
     for (rid, df) in enumerate(dfs)
-        lbl_suffix = isempty(replicate_labels) ? "rep$(rid)" : replicate_labels[rid]
-        style = linestyles[mod1(rid, length(linestyles))]
         sorted_indices = sortperm(df[!, qval_col])
         sdf = df[sorted_indices, :]
         for method_type in method_types
@@ -146,7 +145,10 @@ function plot_efdr_comparison_replicates(dfs::Vector{DataFrame}, score_col::Symb
                 continue
             end
             color = get(method_colors, method_type, :black)
-            plot!(p, sdf[!, qval_col], sdf[!, efdr_col]; label="$(titlecase(method_name)) ($lbl_suffix)", color=color, linestyle=style, linewidth=2)
+            # Only one legend entry per method; all lines solid and slightly thinner
+            label = shown_label[method_type] ? "" : titlecase(method_name)
+            plot!(p, sdf[!, qval_col], sdf[!, efdr_col]; label=label, color=color, linestyle=:solid, linewidth=linewidth)
+            shown_label[method_type] = true
         end
     end
     return p
