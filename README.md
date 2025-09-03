@@ -1,5 +1,9 @@
 # PioneerEntrapment.jl
 
+[![CI](https://github.com/nwamsley1/PioneerEntrapment.jl/actions/workflows/ci.yml/badge.svg)](https://github.com/nwamsley1/PioneerEntrapment.jl/actions/workflows/ci.yml)
+[![Docs](https://img.shields.io/badge/docs-dev-blue.svg)](https://nwamsley1.github.io/PioneerEntrapment.jl/)
+[![codecov](https://codecov.io/gh/nwamsley1/PioneerEntrapment.jl/branch/main/graph/badge.svg)](https://codecov.io/gh/nwamsley1/PioneerEntrapment.jl)
+
 Entrapment-based empirical FDR analysis for DIA proteomics (Pioneer/DIA-NN).
 
 - Inputs: precursor-level Pioneer results + spectral library (for precursor EFDR), or protein-level outputs (Pioneer/DIA-NN) for protein EFDR.
