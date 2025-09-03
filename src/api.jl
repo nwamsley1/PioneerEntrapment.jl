@@ -154,10 +154,30 @@ function run_efdr_replicate_plots(replicates::Vector; output_dir::String="efdr_o
         pr_path = getprop(rep, :precursor_results_path, nothing)
         lib_path = getprop(rep, :library_precursors_path, nothing)
         label = getprop(rep, :label, "rep$(idx)")
+        # Ensure rep_dir is defined before any use
+        rep_dir = getprop(rep, :rep_dir, nothing)
+        if rep_dir === nothing && pr_path !== nothing
+            rep_dir = dirname(String(pr_path))
+        end
+
+        # Resolve paths from rep_dir if precursor path was not provided
+        if pr_path === nothing && rep_dir !== nothing
+            if isfile(joinpath(rep_dir, "precursors_long.arrow"))
+                pr_path = joinpath(rep_dir, "precursors_long.arrow")
+            elseif isfile(joinpath(rep_dir, "precursors_long.tsv"))
+                pr_path = joinpath(rep_dir, "precursors_long.tsv")
+            end
+        end
+        if pr_path === nothing
+            error("Replicate #$(idx) missing precursor results: provide :precursor_results_path or ensure precursors_long.(arrow|tsv) exists in :rep_dir")
+        end
+        if lib_path === nothing
+            error("Replicate #$(idx) missing :library_precursors_path")
+        end
 
         verbose && println("[rep$(idx)] Loading data...")
-        prec_results = _load_table(pr_path)
-        library_precursors = _load_table(lib_path)
+        prec_results = _load_table(String(pr_path))
+        library_precursors = _load_table(String(lib_path))
 
         # Filter non-targets if present
         if hasproperty(prec_results, :target)
@@ -212,7 +232,7 @@ function run_efdr_replicate_plots(replicates::Vector; output_dir::String="efdr_o
 
         # Protein-level EFDRs (if protein file exists alongside the replicate)
         # Infer a protein file path from the replicate entry if possible
-        rep_dir = getprop(rep, :rep_dir, pr_path === nothing ? nothing : dirname(String(pr_path)))
+        # rep_dir already established above
         if rep_dir !== nothing
             prot_path = if isfile(joinpath(rep_dir, "protein_groups_long.arrow"))
                 joinpath(rep_dir, "protein_groups_long.arrow")
