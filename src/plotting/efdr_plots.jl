@@ -2,18 +2,36 @@ using Plots
 using DataFrames
 using Statistics
 
+function _auto_axis_limits(df::DataFrame, qval_col::Symbol, efdr_cols::Vector{Symbol})
+    xvals = skipmissing(df[!, qval_col])
+    xmax = maximum(xvals; init=0.0)
+    ymax = 0.0
+    for c in efdr_cols
+        ymax = max(ymax, maximum(skipmissing(df[!, c]); init=0.0))
+    end
+    # pad slightly, and clip to a reasonable upper bound
+    xupper = min(max(0.01, 1.05 * xmax), 0.1)
+    yupper = min(max(0.01, 1.05 * ymax), 0.1)
+    return (0.0, xupper), (0.0, yupper)
+end
+
 function plot_efdr_vs_qval(df::DataFrame, qval_col::Symbol, efdr_cols::Vector{Symbol};
                           title="Empirical FDR vs Q-value",
                           xlabel="Q-value",
                           ylabel="Empirical FDR",
                           labels=nothing,
                           colors=nothing,
-                          xlims=(0, 0.015),
-                          ylims=(0, 0.015),
+                          xlims=nothing,
+                          ylims=nothing,
                           legend=:bottomright,
                           diagonal=true)
     sorted_indices = sortperm(df[!, qval_col])
     sorted_df = df[sorted_indices, :]
+    if isnothing(xlims) || isnothing(ylims)
+        ax_x, ax_y = _auto_axis_limits(sorted_df, qval_col, efdr_cols)
+        xlims = isnothing(xlims) ? ax_x : xlims
+        ylims = isnothing(ylims) ? ax_y : ylims
+    end
     p = plot(title=title, xlabel=xlabel, ylabel=ylabel, xlims=xlims, ylims=ylims, legend=legend, size=(600, 500), dpi=300)
     if diagonal
         max_val = min(xlims[2], ylims[2])
@@ -82,5 +100,73 @@ function save_efdr_plots(df::DataFrame, output_dir::String; score_qval_pairs::Ve
     end
 end
 
-export plot_efdr_vs_qval, plot_efdr_comparison, plot_multiple_efdr_comparisons, save_efdr_plots
+"""
+Plot EFDR comparison across multiple replicate DataFrames on a single plot.
+Colors are per method; linestyles per replicate.
+"""
+function plot_efdr_comparison_replicates(dfs::Vector{DataFrame}, score_col::Symbol, qval_col::Symbol;
+                                         method_types::Vector=[CombinedEFDR, PairedEFDR],
+                                         replicate_labels::Vector{String}=String[],
+                                         linestyles::Vector=[:solid, :dash, :dot, :dashdot],
+                                         method_colors=Dict(CombinedEFDR=>:blue, PairedEFDR=>:red),
+                                         title="EFDR Comparison Across Replicates",
+                                         legend=:bottomright)
+    # Validate labels
+    if !isempty(replicate_labels) && length(replicate_labels) != length(dfs)
+        error("replicate_labels length must match dfs length")
+    end
+    # Determine auto-limits across all replicates/methods
+    efdr_cols = Symbol[]
+    for method_type in method_types
+        method_name = method_type == CombinedEFDR ? "combined" : method_type == PairedEFDR ? "paired" : error("Unknown method")
+        push!(efdr_cols, Symbol(String(score_col) * "_" * method_name * "_efdr"))
+    end
+    # Combine limits
+    global_x = (0.0, 0.01)
+    global_y = (0.0, 0.01)
+    for df in dfs
+        ax_x, ax_y = _auto_axis_limits(df, qval_col, efdr_cols)
+        global_x = (0.0, max(global_x[2], ax_x[2]))
+        global_y = (0.0, max(global_y[2], ax_y[2]))
+    end
+    p = plot(title=title, xlabel="Q-value", ylabel="Empirical FDR", xlims=global_x, ylims=global_y, legend=legend, size=(700, 550), dpi=300)
+    max_val = min(global_x[2], global_y[2])
+    plot!(p, [0, max_val], [0, max_val], label="y=x", linestyle=:dash, color=:gray, alpha=0.5)
 
+    for (rid, df) in enumerate(dfs)
+        lbl_suffix = isempty(replicate_labels) ? "rep$(rid)" : replicate_labels[rid]
+        style = linestyles[mod1(rid, length(linestyles))]
+        sorted_indices = sortperm(df[!, qval_col])
+        sdf = df[sorted_indices, :]
+        for method_type in method_types
+            method_name = method_type == CombinedEFDR ? "combined" : "paired"
+            efdr_col = Symbol(String(score_col) * "_" * method_name * "_efdr")
+            if !hasproperty(sdf, efdr_col)
+                @warn "Column $efdr_col not found in a replicate; skipping."
+                continue
+            end
+            color = get(method_colors, method_type, :black)
+            plot!(p, sdf[!, qval_col], sdf[!, efdr_col]; label="$(titlecase(method_name)) ($lbl_suffix)", color=color, linestyle=style, linewidth=2)
+        end
+    end
+    return p
+end
+
+function save_efdr_replicate_plots(dfs::Vector{DataFrame}, output_dir::String;
+                                   score_qval_pairs::Vector{Tuple{Symbol,Symbol}}=[(:global_prob, :global_qval), (:prec_prob, :qval)],
+                                   method_types::Vector=[CombinedEFDR, PairedEFDR],
+                                   replicate_labels::Vector{String}=String[],
+                                   formats::Vector{Symbol}=[:png, :pdf])
+    mkpath(output_dir)
+    for (score_col, qval_col) in score_qval_pairs
+        p = plot_efdr_comparison_replicates(dfs, score_col, qval_col; method_types=method_types, replicate_labels=replicate_labels)
+        for format in formats
+            filename = joinpath(output_dir, "efdr_comparison_replicates_$(score_col).$(format)")
+            savefig(p, filename)
+            println("Saved: $filename")
+        end
+    end
+end
+
+export plot_efdr_vs_qval, plot_efdr_comparison, plot_multiple_efdr_comparisons, save_efdr_plots,
+       plot_efdr_comparison_replicates, save_efdr_replicate_plots
