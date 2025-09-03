@@ -24,7 +24,8 @@ function plot_efdr_vs_qval(df::DataFrame, qval_col::Symbol, efdr_cols::Vector{Sy
                           xlims=nothing,
                           ylims=nothing,
                           legend=:bottomright,
-                          diagonal=true)
+                          diagonal=true,
+                          linewidth::Real=1.5)
     sorted_indices = sortperm(df[!, qval_col])
     sorted_df = df[sorted_indices, :]
     if isnothing(xlims) || isnothing(ylims)
@@ -43,7 +44,7 @@ function plot_efdr_vs_qval(df::DataFrame, qval_col::Symbol, efdr_cols::Vector{Sy
     for (i, efdr_col) in enumerate(efdr_cols)
         label = isnothing(labels) ? String(efdr_col) : labels[i]
         color = colors[mod1(i, length(colors))]
-        plot!(p, sorted_df[!, qval_col], sorted_df[!, efdr_col], label=label, color=color, linewidth=2, alpha=0.8)
+        plot!(p, sorted_df[!, qval_col], sorted_df[!, efdr_col], label=label, color=color, linewidth=linewidth, alpha=0.9)
     end
     return p
 end
@@ -60,7 +61,7 @@ function plot_efdr_comparison(df::DataFrame, score_col::Symbol, qval_col::Symbol
         push!(efdr_cols, efdr_col)
         push!(labels, titlecase(method_name) * " EFDR")
     end
-    default_kwargs = Dict(:title => "EFDR Comparison for $(String(score_col))", :labels => labels)
+    default_kwargs = Dict(:title => "EFDR Comparison for $(String(score_col))", :labels => labels, :linewidth => 1.5)
     merged_kwargs = merge(default_kwargs, kwargs)
     return plot_efdr_vs_qval(df, qval_col, efdr_cols; merged_kwargs...)
 end
