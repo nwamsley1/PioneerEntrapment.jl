@@ -145,11 +145,15 @@ function run_efdr_replicate_plots(replicates::Vector; output_dir::String="efdr_o
         labels_map[score_col] = get(labels_map, score_col, String[])
     end
 
+    # Small helpers to work with NamedTuple or Dict-like entries
+    hasprop(x, s::Symbol) = s in propertynames(x)
+    getprop(x, s::Symbol, default) = hasprop(x, s) ? getfield(x, s) : default
+
     for (idx, rep) in enumerate(replicates)
-        # Support NamedTuple with required fields
-        pr_path = get(rep, :precursor_results_path, getfield(rep, :precursor_results_path))
-        lib_path = get(rep, :library_precursors_path, getfield(rep, :library_precursors_path))
-        label = haskey(rep, :label) ? rep.label : "rep$(idx)"
+        # Support NamedTuple entries with fields: :precursor_results_path or :rep_dir, :library_precursors_path, optional :label
+        pr_path = getprop(rep, :precursor_results_path, nothing)
+        lib_path = getprop(rep, :library_precursors_path, nothing)
+        label = getprop(rep, :label, "rep$(idx)")
 
         verbose && println("[rep$(idx)] Loading data...")
         prec_results = _load_table(pr_path)
@@ -208,13 +212,7 @@ function run_efdr_replicate_plots(replicates::Vector; output_dir::String="efdr_o
 
         # Protein-level EFDRs (if protein file exists alongside the replicate)
         # Infer a protein file path from the replicate entry if possible
-        rep_dir = if haskey(rep, :rep_dir)
-            rep[:rep_dir]
-        elseif haskey(rep, :precursor_results_path)
-            dirname(String(get(rep, :precursor_results_path, getfield(rep, :precursor_results_path))))
-        else
-            nothing
-        end
+        rep_dir = getprop(rep, :rep_dir, pr_path === nothing ? nothing : dirname(String(pr_path)))
         if rep_dir !== nothing
             prot_path = if isfile(joinpath(rep_dir, "protein_groups_long.arrow"))
                 joinpath(rep_dir, "protein_groups_long.arrow")
