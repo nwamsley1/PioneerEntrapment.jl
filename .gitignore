@@ -12,3 +12,7 @@
 *.png
 *.pdf
 efdr_out/
+.julia/
+docs/.julia/
+docs/Manifest.toml
+bin/pioneer-entrapment-batch
