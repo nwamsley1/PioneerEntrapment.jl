@@ -90,10 +90,12 @@ function plot_multiple_efdr_comparisons(df::DataFrame, score_qval_pairs::Vector{
     return plot(plots..., layout=layout, size=(800 * layout[2], 600 * layout[1]))
 end
 
-function save_efdr_plots(df::DataFrame, output_dir::String; score_qval_pairs::Vector{Tuple{Symbol,Symbol}}=[(:global_prob, :global_qval), (:prec_prob, :qval)], method_types::Vector=[CombinedEFDR, PairedEFDR], formats::Vector{Symbol}=[:png, :pdf])
+function save_efdr_plots(df::DataFrame, output_dir::String; score_qval_pairs::Vector{Tuple{Symbol,Symbol}}=[(:global_prob, :global_qval), (:prec_prob, :qval)], method_types::Vector=[CombinedEFDR, PairedEFDR], formats::Vector{Symbol}=[:png, :pdf], title_suffix::AbstractString="")
     mkpath(output_dir)
     for (score_col, qval_col) in score_qval_pairs
-        p = plot_efdr_comparison(df, score_col, qval_col; method_types=method_types)
+        title = isempty(title_suffix) ? nothing : "EFDR Comparison for $(String(score_col)) $(title_suffix)"
+        kwargs = isempty(title_suffix) ? (;) : (; title=title)
+        p = plot_efdr_comparison(df, score_col, qval_col; method_types=method_types, kwargs...)
         for format in formats
             filename = joinpath(output_dir, "efdr_comparison_$(score_col).$(format)")
             savefig(p, filename)
@@ -168,10 +170,13 @@ function save_efdr_replicate_plots(dfs::Vector{DataFrame}, output_dir::String;
                                    score_qval_pairs::Vector{Tuple{Symbol,Symbol}}=[(:global_prob, :global_qval), (:prec_prob, :qval)],
                                    method_types::Vector=[CombinedEFDR, PairedEFDR],
                                    replicate_labels::Vector{String}=String[],
-                                   formats::Vector{Symbol}=[:png, :pdf])
+                                   formats::Vector{Symbol}=[:png, :pdf],
+                                   title_suffix::AbstractString="")
     mkpath(output_dir)
     for (score_col, qval_col) in score_qval_pairs
-        p = plot_efdr_comparison_replicates(dfs, score_col, qval_col; method_types=method_types, replicate_labels=replicate_labels)
+        title = isempty(title_suffix) ? nothing : "Entrapment vs Decoy FDR (Replicates) $(title_suffix)"
+        kwargs = isempty(title_suffix) ? (;) : (; title=title)
+        p = plot_efdr_comparison_replicates(dfs, score_col, qval_col; method_types=method_types, replicate_labels=replicate_labels, kwargs...)
         for format in formats
             filename = joinpath(output_dir, "efdr_comparison_replicates_$(score_col).$(format)")
             savefig(p, filename)
@@ -184,7 +189,8 @@ function save_efdr_replicate_plots(pairdfs::Dict{Symbol, Vector{DataFrame}}, out
                                    score_qval_pairs::Vector{Tuple{Symbol,Symbol}}=[(:global_prob, :global_qval), (:prec_prob, :qval)],
                                    method_types::Vector=[CombinedEFDR, PairedEFDR],
                                    replicate_labels_map::Dict{Symbol, Vector{String}}=Dict{Symbol, Vector{String}}(),
-                                   formats::Vector{Symbol}=[:png, :pdf])
+                                   formats::Vector{Symbol}=[:png, :pdf],
+                                   title_suffix::AbstractString="")
     mkpath(output_dir)
     for (score_col, qval_col) in score_qval_pairs
         dfs = get(pairdfs, score_col, DataFrame[])
@@ -193,7 +199,9 @@ function save_efdr_replicate_plots(pairdfs::Dict{Symbol, Vector{DataFrame}}, out
             continue
         end
         labels = get(replicate_labels_map, score_col, String[])
-        p = plot_efdr_comparison_replicates(dfs, score_col, qval_col; method_types=method_types, replicate_labels=labels)
+        title = isempty(title_suffix) ? nothing : "Entrapment vs Decoy FDR (Replicates) $(title_suffix)"
+        kwargs = isempty(title_suffix) ? (;) : (; title=title)
+        p = plot_efdr_comparison_replicates(dfs, score_col, qval_col; method_types=method_types, replicate_labels=labels, kwargs...)
         for format in formats
             filename = joinpath(output_dir, "efdr_comparison_replicates_$(score_col).$(format)")
             savefig(p, filename)

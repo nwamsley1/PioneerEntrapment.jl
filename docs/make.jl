@@ -9,6 +9,7 @@ makedocs(
     format = Documenter.HTML(prettyurls = get(ENV, "CI", "false") == "true"),
     pages = [
         "Home" => "index.md",
+        "Entrapment EFDR" => "entrapment_computation.md",
     ],
 )
 

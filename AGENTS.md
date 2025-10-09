@@ -28,7 +28,7 @@
 - Run selectively in REPL: `] test PioneerEntrapment` or run files via `include("test/foo.jl")` inside a `@testset`.
 
 ## Commit & Pull Request Guidelines
-- Commits: imperative, concise subject (<= 72 chars), scoped body when needed. Example: `fix(core): handle missing entrap_pair_id`.
+- Commits: imperative, concise subject (<= 72 chars), scoped body when needed. Example: `fix(core): handle missing entrapment_pair_id`.
 - PRs: include description, rationale, and sample command/outputs; link issues; note breaking changes; update docs/exports and add tests.
 - CI/docs: ensure `Pkg.test()` passes and `docs/make.jl` builds locally before requesting review.
 

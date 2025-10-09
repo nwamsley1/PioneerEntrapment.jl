@@ -34,7 +34,7 @@ export EFDRMethod, CombinedEFDR, PairedEFDR
 
 # Core functions
 export calculate_efdr, add_efdr_columns!
-export assign_entrapment_pairs!, add_entrap_pair_ids!
+export add_entrap_pair_ids!
 export assign_protein_entrapment_pairs!, add_protein_entrap_pair_ids!
 export add_original_target_scores!, get_complement_score
 export add_original_target_protein_scores!, create_global_protein_results_df

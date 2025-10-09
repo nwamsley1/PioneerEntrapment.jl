@@ -1,7 +1,7 @@
-function calculate_efdr_calibration_error(df::DataFrame, qval_col::Symbol, efdr_col::Symbol, library_precursors::DataFrame; n_bins::Int=20)
+function calculate_efdr_calibration_error(df::DataFrame, qval_col::Symbol, efdr_col::Symbol, library_precursors::DataFrame; n_bins::Int=20, entrap_labels_override::Union{Nothing,AbstractVector}=nothing)
     sorted_indices = sortperm(df[!, efdr_col])
     sorted_df = df[sorted_indices, :]
-    entrap_labels = [library_precursors.entrapment_group_id[pid] for pid in sorted_df.precursor_idx]
+    entrap_labels = entrap_labels_override === nothing ? [library_precursors.entrapment_group_id[pid] for pid in sorted_df.precursor_idx] : collect(Int, entrap_labels_override)[sorted_indices]
     bin_size = max(1, div(nrow(sorted_df), n_bins))
     calibration_data = DataFrame()
     for i in 1:n_bins
@@ -19,4 +19,3 @@ function calculate_efdr_calibration_error(df::DataFrame, qval_col::Symbol, efdr_
     mean_calibration_error = mean(calibration_data.error)
     return calibration_data, mean_calibration_error
 end
-

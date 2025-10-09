@@ -1,0 +1,80 @@
+# Julia REPL commands to generate per-condition replicate EFDR plots
+# Copy this file to: /Users/nathanwamsley/Data/MS_DATA/EntrapmentTests/compare_replicates_repl.txt
+# Then in a Julia REPL:
+#   ] activate /Users/nathanwamsley/Projects/PioneerEntrapment.jl
+#   using Revise, PioneerEntrapment
+#   include("/Users/nathanwamsley/Data/MS_DATA/EntrapmentTests/compare_replicates_repl.txt")
+
+using CSV, DataFrames
+using PioneerEntrapment
+using Printf
+
+# Input base folder and run summary
+const BASE = "/Users/nathanwamsley/Data/MS_DATA/EntrapmentTests"
+const RUN_SUMMARY = joinpath(BASE, "run_summary_09-03-2025.tsv")
+
+# Helper: extract library path from small JSON file without extra deps
+function _find_library_path(json_path::AbstractString)
+    s = read(json_path, String)
+    m = match(r"\"(library_precursors_path|library|lib|path)\"\s*:\s*\"([^\"]+)\"", s)
+    m === nothing && error("Could not find library path key in: $(json_path)")
+    return m.captures[2]
+end
+
+df = CSV.read(RUN_SUMMARY, DataFrame; delim='\t')
+# Normalize headers to lowercase => original
+name_map = Dict(lowercase(n)=>n for n in names(df))
+required = ["library_json","dataset","rep_dir","q_value","first_pass","mbr"]
+missing = [n for n in required if !haskey(name_map, n)]
+!isempty(missing) && error("Missing headers in run summary: $(missing)")
+
+lib_col = name_map["library_json"]; ds_col = name_map["dataset"]; rep_col = name_map["rep_dir"]
+q_col = name_map["q_value"]; fp_col = name_map["first_pass"]; mbr_col = name_map["mbr"]
+
+# Group by condition: (library_json, dataset, q_value, first_pass, mbr)
+gdf = groupby(df, [lib_col, ds_col, q_col, fp_col, mbr_col])
+
+out_root = joinpath(BASE, "efdr_compare")
+mkpath(out_root)
+
+for sub in gdf
+    lib_json = only(unique(sub[!, lib_col]))
+    dataset = only(unique(sub[!, ds_col]))
+    qv = string(only(unique(sub[!, q_col])))
+    fp = string(only(unique(sub[!, fp_col])))
+    mbr = string(only(unique(sub[!, mbr_col])))
+
+    # Resolve library path
+    lib_path = _find_library_path(lib_json)
+    lib_tag = basename(replace(lib_json, ".json"=>""))
+
+    # Build replicates list
+    reps = NamedTuple[]
+    for rep_dir in sub[!, rep_col]
+        prec = joinpath(rep_dir, "precursors_long.arrow")
+        if !isfile(prec)
+            @warn "Missing precursors_long.arrow" rep_dir
+            continue
+        end
+        push!(reps, (precursor_results_path=prec,
+                     library_precursors_path=lib_path,
+                     label=basename(rep_dir)))
+    end
+    isempty(reps) && ( @warn "No replicates found" dataset qv fp mbr lib_json; continue )
+
+    outdir = joinpath(out_root, @sprintf("%s_q%s_fp%s_mbr%s_%s", dataset, qv, fp, mbr, lib_tag))
+    mkpath(outdir)
+    println("Running replicates for $outdir ...")
+
+    run_efdr_replicate_plots(reps;
+        output_dir=outdir,
+        r_lib=1.0,
+        paired_stride=10,
+        plot_formats=[:png, :pdf],
+        verbose=true,
+    )
+    println("Saved: ", outdir)
+end
+
+println("All comparisons complete. See: ", out_root)
+

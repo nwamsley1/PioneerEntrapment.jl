@@ -145,5 +145,8 @@ run_efdr_plots("/path/to/results", "/path/to/library/.poin/.poin";
   verbose=true,
 )
 ```
-\n+## Vector-friendly PDF output
-\n+- Plots.jl + GR: text set to be editable (`GR.setcharquality(0)`).\n+- Default font is Helvetica; override with `using Plots; Plots.default(fontfamily=\"Arial\")` or pass `fontfamily` to plot calls.\n+- Include `:pdf` in `plot_formats` to save vector PDFs.
+## Vector-friendly PDF output
+
+- Plots.jl + GR: text set to be editable (`GR.setcharquality(0)`).
+- Default font is Helvetica; override with `using Plots; Plots.default(fontfamily="Arial")` or pass `fontfamily` to plot calls.
+- Include `:pdf` in `plot_formats` to save vector PDFs.

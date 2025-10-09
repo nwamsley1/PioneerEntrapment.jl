@@ -15,11 +15,11 @@ using PioneerEntrapment
             file_name = ["file1", "file1", "file1", "file1"]
         )
         assign_protein_entrapment_pairs!(df)
-        @test hasproperty(df, :entrap_pair_id)
-        @test !any(ismissing.(df.entrap_pair_id))
-        prot1_pairs = df[df.protein .== "PROT1", :entrap_pair_id]
+        @test hasproperty(df, :entrapment_pair_id)
+        @test !any(ismissing.(df.entrapment_pair_id))
+        prot1_pairs = df[df.protein .== "PROT1", :entrapment_pair_id]
         @test length(unique(prot1_pairs)) == 1
-        prot2_pairs = df[df.protein .== "PROT2", :entrap_pair_id]
+        prot2_pairs = df[df.protein .== "PROT2", :entrapment_pair_id]
         @test length(unique(prot2_pairs)) == 1
         @test prot1_pairs[1] != prot2_pairs[1]
     end
@@ -31,10 +31,10 @@ using PioneerEntrapment
             file_name = ["file1", "file1", "file1", "file1"]
         )
         assign_protein_entrapment_pairs!(df)
-        pair_ids = df.entrap_pair_id
+        pair_ids = df.entrapment_pair_id
         @test length(unique(pair_ids)) == 2
         orig_indices = findall(df.entrap_id .== 0)
-        @test df.entrap_pair_id[orig_indices[1]] != df.entrap_pair_id[orig_indices[2]]
+        @test df.entrapment_pair_id[orig_indices[1]] != df.entrapment_pair_id[orig_indices[2]]
     end
 
     @testset "Proteins without pairs" begin
@@ -45,17 +45,17 @@ using PioneerEntrapment
         )
         assign_protein_entrapment_pairs!(df)
         prot1_df = df[df.protein .== "PROT1", :]
-        @test !any(ismissing.(prot1_df.entrap_pair_id))
-        @test length(unique(prot1_df.entrap_pair_id)) == 1
+        @test !any(ismissing.(prot1_df.entrapment_pair_id))
+        @test length(unique(prot1_df.entrapment_pair_id)) == 1
         prot2_df = df[df.protein .== "PROT2", :]
-        @test all(ismissing.(prot2_df.entrap_pair_id))
+        @test all(ismissing.(prot2_df.entrapment_pair_id))
     end
 
     @testset "add_original_target_protein_scores!" begin
         df = DataFrame(
             protein = ["PROT1", "PROT1", "PROT2", "PROT2"],
             entrap_id = UInt8[0, 1, 0, 1],
-            entrap_pair_id = UInt32[1, 1, 2, 2],
+            entrapment_pair_id = UInt32[1, 1, 2, 2],
             ms_file_idx = [1, 1, 1, 1],
             pg_score = Float32[100.0, 90.0, 80.0, 70.0]
         )
@@ -71,7 +71,7 @@ using PioneerEntrapment
         df = DataFrame(
             protein = ["PROT1", "PROT1", "PROT2", "PROT2"],
             entrap_id = UInt8[0, 1, 0, 1],
-            entrap_pair_id = UInt32[1, 1, 2, 2],
+            entrapment_pair_id = UInt32[1, 1, 2, 2],
             file_name = ["file1", "file1", "file2", "file2"],
             pg_score = Float32[100.0, 90.0, 80.0, 70.0]
         )
@@ -84,7 +84,7 @@ using PioneerEntrapment
         df = DataFrame(
             protein = ["PROT1", "PROT1"],
             entrap_id = UInt8[1, 1],
-            entrap_pair_id = UInt32[1, 1],
+            entrapment_pair_id = UInt32[1, 1],
             ms_file_idx = [1, 1],
             pg_score = Float32[90.0, 85.0]
         )
@@ -142,7 +142,7 @@ end
     df = DataFrame(
         protein = ["PROT1", "PROT1", "PROT2", "PROT2"],
         entrap_id = UInt8[0, 1, 0, 1],
-        entrap_pair_id = UInt32[1, 1, 2, 2],
+        entrapment_pair_id = UInt32[1, 1, 2, 2],
         pg_score = Float32[100.0, 90.0, 80.0, 70.0],
         pg_score_original_target = Float32[100.0, 100.0, 80.0, 80.0],
         qval = Float32[0.01, 0.02, 0.01, 0.02]

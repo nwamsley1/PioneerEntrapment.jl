@@ -1,6 +1,23 @@
 using DataFrames
 using Dictionaries
 
+"""
+    add_original_target_protein_scores!(protein_results::DataFrame; score_col=:pg_score) -> Nothing
+
+Add a `"<score>_original_target"` column capturing, for each protein row,
+the score of the original target protein (entrap_id == 0) with the same
+`file` and `species`. For protein group identifiers that contain multiple
+entries separated by `;`, the first entry (i.e., `split(protein,';')[1]`) is
+used as the group key so targets/entrapments match on the same canonical ID.
+
+If the row itself is the original target, its own score is used. If there is no
+matching original target, the value is set to `-1.0f0`.
+
+Required columns
+- protein_results: `:protein`, `:entrap_id`, `score_col`, and either `:ms_file_idx` or `:file_name`.
+Optional column
+- `:species` — if present, the mapping keys on `(file, species, protein_key)`; else `(file, "", protein_key)`.
+"""
 function add_original_target_protein_scores!(protein_results::DataFrame; score_col=:pg_score)
     required_cols = [:protein, :entrap_id]
     missing_cols = [col for col in required_cols if !hasproperty(protein_results, col)]
@@ -23,9 +40,10 @@ function add_original_target_protein_scores!(protein_results::DataFrame; score_c
     for row in eachrow(protein_results)
         if row.entrap_id == 0 && !ismissing(row[score_col])
             species = hasproperty(protein_results, :species) ? String(row.species) : ""
-            key = (row[file_col], species, row.protein)
+            protkey = first(split(String(row.protein), ';'))
+            key = (row[file_col], species, protkey)
             if haskey(protein_to_target, key)
-                error("Duplicate target protein found: protein '$(row.protein)' appears multiple times with entrap_id=0 in file '$(row[file_col])'.")
+                error("Duplicate target protein found: protein key '$(protkey)' appears multiple times with entrap_id=0 in file '$(row[file_col])'.")
             end
             insert!(protein_to_target, key, Float32(row[score_col]))
         end
@@ -37,7 +55,8 @@ function add_original_target_protein_scores!(protein_results::DataFrame; score_c
                 push!(original_target_scores, Float32(row[score_col]))
             else
                 species = hasproperty(protein_results, :species) ? String(row.species) : ""
-                key = (row[file_col], species, row.protein)
+                protkey = first(split(String(row.protein), ';'))
+                key = (row[file_col], species, protkey)
                 if haskey(protein_to_target, key)
                     push!(original_target_scores, protein_to_target[key])
                 else
@@ -52,6 +71,11 @@ function add_original_target_protein_scores!(protein_results::DataFrame; score_c
     return nothing
 end
 
+"""
+    add_original_target_protein_scores!(protein_results::DataFrame, score_cols::Vector{Symbol}) -> Nothing
+
+Vectorized overload to compute original target columns for multiple score fields.
+"""
 function add_original_target_protein_scores!(protein_results::DataFrame, score_cols::Vector{Symbol})
     for score_col in score_cols
         add_original_target_protein_scores!(protein_results; score_col=score_col)
@@ -59,6 +83,21 @@ function add_original_target_protein_scores!(protein_results::DataFrame, score_c
     return nothing
 end
 
+"""
+    create_global_protein_results_df(protein_results::DataFrame; score_col::Symbol=:global_pg_score) -> DataFrame
+
+Select the best row across files per grouping of `(species?, protein, entrap_id?)`.
+
+- Groups by `:species` if present, always by `:protein`, and by `:entrap_id` if present.
+- For each group, picks the row with the maximum `score_col`.
+- If `:ms_file_idx` exists, sets it to 0 for returned rows; otherwise assigns `:file_name => "global"`.
+
+Notes
+- Decoys: upstream APIs filter out decoys (`:target == false`) before calling this. If a `:target` column is present, rows with `target == false` are dropped defensively.
+
+Required columns
+- protein_results: `:protein`, `score_col`, and either `:ms_file_idx` or `:file_name`.
+"""
 function create_global_protein_results_df(protein_results::DataFrame; score_col::Symbol=:global_pg_score)
     required_cols = [:protein, score_col]
     missing_cols = [col for col in required_cols if !hasproperty(protein_results, col)]
@@ -73,8 +112,23 @@ function create_global_protein_results_df(protein_results::DataFrame; score_col:
         # Default to file_name if present, else synthesize
         file_col = :file_name
     end
-    protein_results_copy = copy(protein_results)
-    grouped = hasproperty(protein_results_copy, :species) ? groupby(protein_results_copy, [:species, :protein]) : groupby(protein_results_copy, [:protein])
+    protein_results_copy = if hasproperty(protein_results, :target)
+        protein_results[protein_results.target .== true, :]
+    else
+        copy(protein_results)
+    end
+    # Build grouping keys: [:species]? , :protein , [:entrap_id]?
+    keys = Symbol[]
+    if hasproperty(protein_results_copy, :species)
+        push!(keys, :species)
+    end
+    push!(keys, :protein)
+    if hasproperty(protein_results_copy, :entrapment_group_id)
+        push!(keys, :entrapment_group_id)
+    elseif hasproperty(protein_results_copy, :entrap_id)
+        push!(keys, :entrap_id)
+    end
+    grouped = groupby(protein_results_copy, keys)
     global_df = combine(grouped) do group
         valid_rows = group[.!ismissing.(group[!, score_col]), :]
         if nrow(valid_rows) == 0

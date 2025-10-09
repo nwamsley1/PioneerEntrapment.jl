@@ -72,6 +72,20 @@ function _load_table(path::AbstractString)
     end
 end
 
+# Determine entrapment labels from library species. A row is entrapment if
+# proteome_identifiers is a single species equal to `species` (no shared entries).
+function _entrap_labels_from_species(prec_results::DataFrame, library_precursors::DataFrame, species::AbstractString)
+    hasproperty(library_precursors, :proteome_identifiers) || error("library_precursors must have :proteome_identifiers for species entrapment mode")
+    labels = Vector{Int}(undef, nrow(prec_results))
+    @inbounds for i in 1:nrow(prec_results)
+        pid = prec_results.precursor_idx[i]
+        s = String(library_precursors.proteome_identifiers[pid])
+        parts = filter(!isempty, split(s, ';'))
+        labels[i] = (length(parts) == 1 && strip(parts[1]) == species) ? 1 : 0
+    end
+    return labels
+end
+
 """
     run_efdr_plots(results_dir::String, library_path::String; output_dir=joinpath(results_dir, "efdr_out"), r_lib=1.0, paired_stride=5, plot_formats=[:png,:pdf], verbose=true)
 
@@ -85,7 +99,8 @@ function run_efdr_plots(results_dir::String, library_path::String;
                         r_lib::Float64=1.0,
                         paired_stride::Int=5,
                         plot_formats::Vector{Symbol} = [:png, :pdf],
-                        verbose::Bool=true)
+                        verbose::Bool=true,
+                        entrap_species::Union{Nothing,AbstractString}=nothing)
     prec = if isfile(joinpath(results_dir, "precursors_long.arrow"))
         joinpath(results_dir, "precursors_long.arrow")
     elseif isfile(joinpath(results_dir, "precursors_long.tsv"))
@@ -108,7 +123,8 @@ function run_efdr_plots(results_dir::String, library_path::String;
                                     r_lib=r_lib,
                                     paired_stride=paired_stride,
                                     plot_formats=plot_formats,
-                                    verbose=verbose)
+                                    verbose=verbose,
+                                    entrap_species=entrap_species)
     elseif prec !== nothing
         return run_efdr_analysis(prec, library_path; output_dir=output_dir, r_lib=r_lib, paired_stride=paired_stride, plot_formats=plot_formats, verbose=verbose)
     elseif prot !== nothing
@@ -184,10 +200,10 @@ function run_efdr_replicate_plots(replicates::Vector; output_dir::String="efdr_o
             filter!(x -> x.target, prec_results)
         end
 
-        if !hasproperty(library_precursors, :mod_key)
-            library_precursors[!, :mod_key] = map(x -> getModKey(x), library_precursors.structural_mods)
+        # Expect precomputed entrapment pairing from the library
+        if !hasproperty(library_precursors, :entrapment_pair_id)
+            error("library_precursors is missing :entrapment_pair_id. Entrapment pairing must be precomputed and provided by the library; this tool does not construct pairs at runtime. Please provide a library with :entrapment_pair_id before calling run_efdr_replicate_plots.")
         end
-        assign_entrapment_pairs!(library_precursors)
         add_entrap_pair_ids!(prec_results, library_precursors)
 
         # Identify which requested pairs are "global" vs per-file (precursor)
@@ -312,7 +328,8 @@ function run_efdr_analysis(prec_results_path::String, library_precursors_path::S
                           r_lib::Float64=1.0,
                           paired_stride::Int=5,
                           plot_formats::Vector{Symbol}=[:png, :pdf],
-                          verbose::Bool=true)
+                          verbose::Bool=true,
+                          entrap_species::Union{Nothing,AbstractString}=nothing)
 
     mkpath(output_dir)
     output_files = String[]
@@ -335,15 +352,14 @@ function run_efdr_analysis(prec_results_path::String, library_precursors_path::S
         verbose && @warn "No 'target' column found. Assuming all rows are targets."
     end
 
-    if !hasproperty(library_precursors, :mod_key)
+    if entrap_species === nothing && !hasproperty(library_precursors, :mod_key)
         verbose && println("Adding mod_key column to library...")
         library_precursors[!, :mod_key] = map(x -> getModKey(x), library_precursors.structural_mods)
     end
-
-    verbose && println("Assigning entrapment pairs...")
-    assign_entrapment_pairs!(library_precursors)
-
-    add_entrap_pair_ids!(prec_results, library_precursors)
+    if entrap_species === nothing
+        hasproperty(library_precursors, :entrapment_pair_id) || error("library_precursors must have :entrapment_pair_id; pairing must be precomputed.")
+        add_entrap_pair_ids!(prec_results, library_precursors)
+    end
 
     verbose && println("Separating global and per-file analyses...")
     global_scores = Symbol[]
@@ -365,27 +381,37 @@ function run_efdr_analysis(prec_results_path::String, library_precursors_path::S
 
     if !isempty(perfile_scores)
         verbose && println("Processing per-file scores...")
-        add_original_target_scores!(prec_results, library_precursors, perfile_scores)
+        if entrap_species === nothing
+            add_original_target_scores!(prec_results, library_precursors, perfile_scores)
+        end
         perfile_pairs = [(s, q) for (s, q) in score_qval_pairs if s in perfile_scores]
         if !isempty(perfile_pairs)
+            eff_methods = entrap_species === nothing ? method_types : [CombinedEFDR]
+            entrap_labels_override = entrap_species === nothing ? nothing : _entrap_labels_from_species(prec_results, library_precursors, entrap_species)
             add_efdr_columns!(prec_results, library_precursors;
-                              method_types=method_types,
+                              method_types=eff_methods,
                               score_qval_pairs=perfile_pairs,
                               r=r_lib,
-                              paired_stride=paired_stride)
+                              paired_stride=paired_stride,
+                              entrap_labels_override=entrap_labels_override)
         end
     end
 
     if !isnothing(global_results_df) && !isempty(global_scores)
         verbose && println("Processing global scores...")
-        add_original_target_scores!(global_results_df, library_precursors, global_scores)
+        if entrap_species === nothing
+            add_original_target_scores!(global_results_df, library_precursors, global_scores)
+        end
         global_pairs = [(s, q) for (s, q) in score_qval_pairs if s in global_scores]
         if !isempty(global_pairs)
+            eff_methods = entrap_species === nothing ? method_types : [CombinedEFDR]
+            entrap_labels_override = entrap_species === nothing ? nothing : _entrap_labels_from_species(global_results_df, library_precursors, entrap_species)
             add_efdr_columns!(global_results_df, library_precursors;
-                              method_types=method_types,
+                              method_types=eff_methods,
                               score_qval_pairs=global_pairs,
                               r=r_lib,
-                              paired_stride=paired_stride)
+                              paired_stride=paired_stride,
+                              entrap_labels_override=entrap_labels_override)
         end
     end
 
@@ -393,7 +419,8 @@ function run_efdr_analysis(prec_results_path::String, library_precursors_path::S
     for (score_col, qval_col) in score_qval_pairs
         if score_col in perfile_scores
             verbose && println("Comparing EFDR methods for $score_col/$qval_col (per-file)...")
-            comparison_df = compare_efdr_methods(prec_results, qval_col, score_col, library_precursors)
+            entrap_override = entrap_species === nothing ? nothing : _entrap_labels_from_species(prec_results, library_precursors, entrap_species)
+            comparison_df = compare_efdr_methods(prec_results, qval_col, score_col, library_precursors; entrap_labels_override=entrap_override)
             comparison_results[(score_col, qval_col)] = comparison_df
         end
     end
@@ -401,7 +428,8 @@ function run_efdr_analysis(prec_results_path::String, library_precursors_path::S
         for (score_col, qval_col) in score_qval_pairs
             if score_col in global_scores
                 verbose && println("Comparing EFDR methods for $score_col/$qval_col (global)...")
-                comparison_df = compare_efdr_methods(global_results_df, qval_col, score_col, library_precursors)
+                entrap_override = entrap_species === nothing ? nothing : _entrap_labels_from_species(global_results_df, library_precursors, entrap_species)
+                comparison_df = compare_efdr_methods(global_results_df, qval_col, score_col, library_precursors; entrap_labels_override=entrap_override)
                 comparison_results[(score_col, qval_col)] = comparison_df
             end
         end
@@ -410,12 +438,13 @@ function run_efdr_analysis(prec_results_path::String, library_precursors_path::S
     calibration_results = Dict{Symbol, Tuple{DataFrame, Float64}}()
     for (score_col, qval_col) in score_qval_pairs
         if score_col in perfile_scores
-            for method_type in method_types
+            eff_methods = entrap_species === nothing ? method_types : [CombinedEFDR]
+            for method_type in eff_methods
                 method_name = method_type == CombinedEFDR ? "combined" : "paired"
                 efdr_col = Symbol(String(score_col) * "_" * method_name * "_efdr")
                 verbose && println("Calculating calibration error for $efdr_col (per-file)...")
                 cal_data, cal_error = calculate_efdr_calibration_error(
-                    prec_results, qval_col, efdr_col, library_precursors
+                    prec_results, qval_col, efdr_col, library_precursors; entrap_labels_override=(entrap_species === nothing ? nothing : _entrap_labels_from_species(prec_results, library_precursors, entrap_species))
                 )
                 calibration_results[efdr_col] = (cal_data, cal_error)
             end
@@ -424,12 +453,13 @@ function run_efdr_analysis(prec_results_path::String, library_precursors_path::S
     if !isnothing(global_results_df)
         for (score_col, qval_col) in score_qval_pairs
             if score_col in global_scores
-                for method_type in method_types
+                eff_methods = entrap_species === nothing ? method_types : [CombinedEFDR]
+                for method_type in eff_methods
                     method_name = method_type == CombinedEFDR ? "combined" : "paired"
                     efdr_col = Symbol(String(score_col) * "_" * method_name * "_efdr")
                     verbose && println("Calculating calibration error for $efdr_col (global)...")
                     cal_data, cal_error = calculate_efdr_calibration_error(
-                        global_results_df, qval_col, efdr_col, library_precursors
+                        global_results_df, qval_col, efdr_col, library_precursors; entrap_labels_override=(entrap_species === nothing ? nothing : _entrap_labels_from_species(global_results_df, library_precursors, entrap_species))
                     )
                     calibration_results[efdr_col] = (cal_data, cal_error)
                 end
@@ -440,11 +470,15 @@ function run_efdr_analysis(prec_results_path::String, library_precursors_path::S
     verbose && println("Generating plots...")
     if !isempty(perfile_scores)
         perfile_pairs = [(s, q) for (s, q) in score_qval_pairs if s in perfile_scores]
-        save_efdr_plots(prec_results, output_dir; score_qval_pairs=perfile_pairs, method_types=method_types, formats=plot_formats)
+        eff_methods = entrap_species === nothing ? method_types : [CombinedEFDR]
+        title_suffix = entrap_species === nothing ? "" : "(Species: $(entrap_species))"
+        save_efdr_plots(prec_results, output_dir; score_qval_pairs=perfile_pairs, method_types=eff_methods, formats=plot_formats, title_suffix=title_suffix)
     end
     if !isnothing(global_results_df) && !isempty(global_scores)
         global_pairs = [(s, q) for (s, q) in score_qval_pairs if s in global_scores]
-        save_efdr_plots(global_results_df, output_dir; score_qval_pairs=global_pairs, method_types=method_types, formats=plot_formats)
+        eff_methods = entrap_species === nothing ? method_types : [CombinedEFDR]
+        title_suffix = entrap_species === nothing ? "" : "(Species: $(entrap_species))"
+        save_efdr_plots(global_results_df, output_dir; score_qval_pairs=global_pairs, method_types=eff_methods, formats=plot_formats, title_suffix=title_suffix)
     end
     for (score_col, _) in score_qval_pairs
         for format in plot_formats
@@ -464,8 +498,9 @@ function run_efdr_analysis(prec_results_path::String, library_precursors_path::S
     else
         prec_results
     end
+    eff_methods_report = entrap_species === nothing ? method_types : [CombinedEFDR]
     generate_markdown_report(report_df, library_precursors, comparison_results,
-                             calibration_results, score_qval_pairs, method_types,
+                             calibration_results, score_qval_pairs, eff_methods_report,
                              original_rows, output_dir, report_path)
     push!(output_files, report_path)
 
@@ -561,17 +596,22 @@ function run_protein_efdr_analysis(protein_results_path::String;
                                   r_lib::Float64=1.0,
                                   paired_stride::Int=5,
                                   plot_formats::AbstractVector=[:png, :pdf],
-                                  verbose::Bool=true)
+                                  verbose::Bool=true,
+                                  entrap_species::Union{Nothing,AbstractString}=nothing)
 
     mkpath(output_dir)
     output_files = String[]
 
     verbose && println("Loading protein data...")
     protein_results = _load_table(protein_results_path)
-    is_sorted = issorted(protein_results, [:pg_score, :entrap_id], rev = [true, false])
-    @info is_sorted ? "Protein results are sorted by pg_score and entrap_id" :
-        "Protein results are NOT sorted by pg_score and entrap_id, sorting now"
-    sort!(protein_results, [:pg_score, :entrap_id], rev = [true, false])
+    if hasproperty(protein_results, :entrap_id)
+        is_sorted = issorted(protein_results, [:pg_score, :entrap_id], rev = [true, false])
+        @info is_sorted ? "Protein results are sorted by pg_score and entrap_id" :
+            "Protein results are NOT sorted by pg_score and entrap_id, sorting now"
+        sort!(protein_results, [:pg_score, :entrap_id], rev = [true, false])
+    else
+        sort!(protein_results, [:pg_score], rev = [true])
+    end
 
     verbose && println("Loaded $(nrow(protein_results)) protein results")
 
@@ -614,19 +654,41 @@ function run_protein_efdr_analysis(protein_results_path::String;
 
     if !isempty(perfile_scores)
         verbose && println("Processing per-file protein scores...")
-        add_original_target_protein_scores!(protein_results, perfile_scores)
+        if entrap_species === nothing
+            add_original_target_protein_scores!(protein_results, perfile_scores)
+        end
         perfile_pairs = [(s, q) for (s, q) in score_qval_pairs if s in perfile_scores]
         if !isempty(perfile_pairs)
-            add_protein_efdr_columns!(protein_results; method_types=method_types, score_qval_pairs=perfile_pairs, r=r_lib, paired_stride=paired_stride)
+            eff_methods = entrap_species === nothing ? method_types : [CombinedEFDR]
+            entrap_labels_override = nothing
+            if entrap_species !== nothing
+                if hasproperty(protein_results, :species)
+                    entrap_labels_override = Int[(String(x) == entrap_species) ? 1 : 0 for x in protein_results.species]
+                else
+                    error("Protein results missing :species for species entrapment mode")
+                end
+            end
+            add_protein_efdr_columns!(protein_results; method_types=eff_methods, score_qval_pairs=perfile_pairs, r=r_lib, paired_stride=paired_stride, entrap_labels_override=entrap_labels_override)
         end
     end
 
     if !isnothing(global_results_df) && !isempty(global_scores)
         verbose && println("Processing global protein scores...")
-        add_original_target_protein_scores!(global_results_df, global_scores)
+        if entrap_species === nothing
+            add_original_target_protein_scores!(global_results_df, global_scores)
+        end
         global_pairs = [(s, q) for (s, q) in score_qval_pairs if s in global_scores]
         if !isempty(global_pairs)
-            add_protein_efdr_columns!(global_results_df; method_types=method_types, score_qval_pairs=global_pairs, r=r_lib, paired_stride=paired_stride)
+            eff_methods = entrap_species === nothing ? method_types : [CombinedEFDR]
+            entrap_labels_override = nothing
+            if entrap_species !== nothing
+                if hasproperty(global_results_df, :species)
+                    entrap_labels_override = Int[(String(x) == entrap_species) ? 1 : 0 for x in global_results_df.species]
+                else
+                    error("Global protein results missing :species for species entrapment mode")
+                end
+            end
+            add_protein_efdr_columns!(global_results_df; method_types=eff_methods, score_qval_pairs=global_pairs, r=r_lib, paired_stride=paired_stride, entrap_labels_override=entrap_labels_override)
         end
     end
 
@@ -634,7 +696,8 @@ function run_protein_efdr_analysis(protein_results_path::String;
     for (score_col, qval_col) in score_qval_pairs
         if score_col in perfile_scores
             verbose && println("Comparing EFDR methods for $score_col/$qval_col (per-file)...")
-            comparison_df = compare_protein_efdr_methods(protein_results, qval_col, score_col)
+            entrap_override = entrap_species === nothing ? nothing : (hasproperty(protein_results, :species) ? Int[(String(x) == entrap_species) ? 1 : 0 for x in protein_results.species] : nothing)
+            comparison_df = compare_protein_efdr_methods(protein_results, qval_col, score_col; entrap_labels_override=entrap_override, include_paired=(entrap_species === nothing))
             comparison_results[(score_col, qval_col)] = comparison_df
         end
     end
@@ -642,7 +705,8 @@ function run_protein_efdr_analysis(protein_results_path::String;
         for (score_col, qval_col) in score_qval_pairs
             if score_col in global_scores
                 verbose && println("Comparing EFDR methods for $score_col/$qval_col (global)...")
-                comparison_df = compare_protein_efdr_methods(global_results_df, qval_col, score_col)
+                entrap_override = entrap_species === nothing ? nothing : (hasproperty(global_results_df, :species) ? Int[(String(x) == entrap_species) ? 1 : 0 for x in global_results_df.species] : nothing)
+                comparison_df = compare_protein_efdr_methods(global_results_df, qval_col, score_col; entrap_labels_override=entrap_override, include_paired=(entrap_species === nothing))
                 comparison_results[(score_col, qval_col)] = comparison_df
             end
         end
@@ -651,7 +715,8 @@ function run_protein_efdr_analysis(protein_results_path::String;
     calibration_results = Dict{Symbol, Tuple{DataFrame, Float64}}()
     for (score_col, qval_col) in score_qval_pairs
         if score_col in perfile_scores
-            for method_type in method_types
+            eff_methods = entrap_species === nothing ? method_types : [CombinedEFDR]
+            for method_type in eff_methods
                 method_name = method_type == CombinedEFDR ? "combined" : "paired"
                 efdr_col = Symbol(String(score_col) * "_" * method_name * "_efdr")
                 if hasproperty(protein_results, efdr_col)
@@ -667,7 +732,8 @@ function run_protein_efdr_analysis(protein_results_path::String;
     if !isnothing(global_results_df)
         for (score_col, qval_col) in score_qval_pairs
             if score_col in global_scores
-                for method_type in method_types
+                eff_methods = entrap_species === nothing ? method_types : [CombinedEFDR]
+                for method_type in eff_methods
                     method_name = method_type == CombinedEFDR ? "combined" : "paired"
                     efdr_col = Symbol(String(score_col) * "_" * method_name * "_efdr")
                     if hasproperty(global_results_df, efdr_col)
@@ -685,11 +751,15 @@ function run_protein_efdr_analysis(protein_results_path::String;
     verbose && println("Generating plots...")
     if !isempty(perfile_scores)
         perfile_pairs = [(s, q) for (s, q) in score_qval_pairs if s in perfile_scores]
-        save_efdr_plots(protein_results, output_dir; score_qval_pairs=perfile_pairs, method_types=method_types, formats=plot_formats)
+        eff_methods = entrap_species === nothing ? method_types : [CombinedEFDR]
+        title_suffix = entrap_species === nothing ? "" : "(Species: $(entrap_species))"
+        save_efdr_plots(protein_results, output_dir; score_qval_pairs=perfile_pairs, method_types=eff_methods, formats=plot_formats, title_suffix=title_suffix)
     end
     if !isnothing(global_results_df) && !isempty(global_scores)
         global_pairs = [(s, q) for (s, q) in score_qval_pairs if s in global_scores]
-        save_efdr_plots(global_results_df, output_dir; score_qval_pairs=global_pairs, method_types=method_types, formats=plot_formats)
+        eff_methods = entrap_species === nothing ? method_types : [CombinedEFDR]
+        title_suffix = entrap_species === nothing ? "" : "(Species: $(entrap_species))"
+        save_efdr_plots(global_results_df, output_dir; score_qval_pairs=global_pairs, method_types=eff_methods, formats=plot_formats, title_suffix=title_suffix)
     end
     for (score_col, _) in score_qval_pairs
         for format in plot_formats
@@ -752,15 +822,16 @@ function run_both_analyses(; precursor_results_path::AbstractString,
                         r_lib::Float64 = 1.0,
                         paired_stride::Int = 5,
                         plot_formats::Vector{Symbol} = [:png, :pdf],
-                        verbose::Bool = true)
+                        verbose::Bool = true,
+                        entrap_species::Union{Nothing,AbstractString}=nothing)
 
     out_prec = joinpath(output_dir, "precursor")
     out_prot = joinpath(output_dir, "protein")
 
     prec = run_efdr_analysis(precursor_results_path, library_precursors_path;
-                             output_dir=out_prec, r_lib=r_lib, paired_stride=paired_stride, plot_formats=plot_formats, verbose=verbose)
+                             output_dir=out_prec, r_lib=r_lib, paired_stride=paired_stride, plot_formats=plot_formats, verbose=verbose, entrap_species=entrap_species)
     prot = run_protein_efdr_analysis(protein_results_path;
-                                     output_dir=out_prot, r_lib=r_lib, paired_stride=paired_stride, plot_formats=plot_formats, verbose=verbose)
+                                     output_dir=out_prot, r_lib=r_lib, paired_stride=paired_stride, plot_formats=plot_formats, verbose=verbose, entrap_species=entrap_species)
 
     return (precursor=prec, protein=prot)
 end
