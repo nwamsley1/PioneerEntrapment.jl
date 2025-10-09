@@ -240,10 +240,10 @@ function _get_required_protein_columns(score_qval_pairs::Vector{Tuple{Symbol,Sym
         push!(cols, score_col, qval_col)
     end
 
-    # For species-based entrapment
-    if entrap_species !== nothing
-        push!(cols, :species)
-    end
+    # Always load species column for protein files (needed for unique keys in add_original_target_protein_scores!)
+    # Even when not doing species-based entrapment, the species column is used to create
+    # unique (file, species, protein) keys. Without it, all keys become (file, "", protein) → duplicates.
+    push!(cols, :species)
 
     return unique(cols)
 end

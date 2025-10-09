@@ -14,12 +14,10 @@ If the row itself is the original target, its own score is used. If there is no
 matching original target, the value is set to `-1.0f0`.
 
 Required columns
-- protein_results: `:protein`, `:entrap_id`, `score_col`, and either `:ms_file_idx` or `:file_name`.
-Optional column
-- `:species` — if present, the mapping keys on `(file, species, protein_key)`; else `(file, "", protein_key)`.
+- protein_results: `:protein`, `:entrap_id`, `:species`, `score_col`, and either `:ms_file_idx` or `:file_name`.
 """
 function add_original_target_protein_scores!(protein_results::DataFrame; score_col=:pg_score)
-    required_cols = [:protein, :entrap_id]
+    required_cols = [:protein, :entrap_id, :species]
     missing_cols = [col for col in required_cols if !hasproperty(protein_results, col)]
     if !isempty(missing_cols)
         error("DataFrame missing required columns: $missing_cols")
@@ -35,11 +33,11 @@ function add_original_target_protein_scores!(protein_results::DataFrame; score_c
         error("DataFrame must have either :ms_file_idx or :file_name column")
     end
     original_target_col = Symbol(String(score_col) * "_original_target")
-    # Keys: (file, species?, protein). If :species missing, use empty string.
+    # Keys: (file, species, protein). Species column is always required.
     protein_to_target = Dictionary{Tuple{Any, String, String}, Float32}()
     for row in eachrow(protein_results)
         if row.entrap_id == 0 && !ismissing(row[score_col])
-            species = hasproperty(protein_results, :species) ? String(row.species) : ""
+            species = String(row.species)
             protkey = first(split(String(row.protein), ';'))
             key = (row[file_col], species, protkey)
             if haskey(protein_to_target, key)
@@ -54,7 +52,7 @@ function add_original_target_protein_scores!(protein_results::DataFrame; score_c
             if row.entrap_id == 0
                 push!(original_target_scores, Float32(row[score_col]))
             else
-                species = hasproperty(protein_results, :species) ? String(row.species) : ""
+                species = String(row.species)
                 protkey = first(split(String(row.protein), ';'))
                 key = (row[file_col], species, protkey)
                 if haskey(protein_to_target, key)
