@@ -276,7 +276,11 @@ function add_efdr_columns!(df::DataFrame, library_precursors::DataFrame;
                 continue
             end
             method = method_type(scores, original_target_scores, entrap_labels, qvals, r)
-            efdr_values = method_type == PairedEFDR ? calculate_efdr(method; stride=paired_stride) : calculate_efdr(method)
+            efdr_values = if method_type == PairedEFDR
+                calculate_efdr_fast(method; cuts_mode=:all)
+            else
+                calculate_efdr(method)
+            end
             df[!, efdr_col] = efdr_values
         end
     end

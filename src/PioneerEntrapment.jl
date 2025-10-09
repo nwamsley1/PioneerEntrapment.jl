@@ -14,12 +14,12 @@ using Markdown
 
 # Core, analysis, plotting, and API
 include("core/efdr_methods.jl")
+include("core/paired_fast.jl")  # Must come after efdr_methods.jl (defines PairedEFDR) but before protein_efdr.jl
 include("core/entrapment_pairing.jl")
 include("core/protein_entrapment_pairing.jl")
 include("core/scoring.jl")
 include("core/protein_scoring.jl")
 include("core/protein_efdr.jl")
-include("core/paired_fast.jl")
 include("analysis/efdr_analysis.jl")
 include("analysis/calibration.jl")
 include("plotting/efdr_plots.jl")
