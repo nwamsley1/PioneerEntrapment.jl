@@ -34,11 +34,14 @@ function add_original_target_protein_scores!(protein_results::DataFrame; score_c
     end
     original_target_col = Symbol(String(score_col) * "_original_target")
     # Keys: (file, species, protein). Species column is always required.
+    # For global results (file="global"), use full protein string. For per-file, use first from semicolon-split.
     protein_to_target = Dictionary{Tuple{Any, String, String}, Float32}()
     for row in eachrow(protein_results)
         if row.entrap_id == 0 && !ismissing(row[score_col])
             species = String(row.species)
-            protkey = first(split(String(row.protein), ';'))
+            # Global results: use full protein string. Per-file: use leading protein from group.
+            is_global = row[file_col] == "global" || (row[file_col] isa Integer && row[file_col] == 0)
+            protkey = is_global ? String(row.protein) : first(split(String(row.protein), ';'))
             key = (row[file_col], species, protkey)
             if haskey(protein_to_target, key)
                 error("Duplicate target protein found: protein key '$(protkey)' appears multiple times with entrap_id=0 in file '$(row[file_col])'.")
@@ -53,7 +56,9 @@ function add_original_target_protein_scores!(protein_results::DataFrame; score_c
                 push!(original_target_scores, Float32(row[score_col]))
             else
                 species = String(row.species)
-                protkey = first(split(String(row.protein), ';'))
+                # Global results: use full protein string. Per-file: use leading protein from group.
+                is_global = row[file_col] == "global" || (row[file_col] isa Integer && row[file_col] == 0)
+                protkey = is_global ? String(row.protein) : first(split(String(row.protein), ';'))
                 key = (row[file_col], species, protkey)
                 if haskey(protein_to_target, key)
                     push!(original_target_scores, protein_to_target[key])
