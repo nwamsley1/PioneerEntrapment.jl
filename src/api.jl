@@ -424,7 +424,8 @@ function run_efdr_replicate_plots(replicates::Vector; output_dir::String="efdr_o
             end
             if prot_path !== nothing
                 # Load and compute protein EFDR columns
-                prot_cols = _get_required_protein_columns(protein_score_qval_pairs, true, nothing)
+                # Protein files use :file_name, not :ms_file_idx
+                prot_cols = _get_required_protein_columns(protein_score_qval_pairs, false, nothing)
                 protein_results = _load_table(prot_path; columns=prot_cols)
                 # Separate global/per-file
                 prot_global_pairs = [(s,q) for (s,q) in protein_score_qval_pairs if occursin("global", String(s))]
@@ -774,7 +775,8 @@ function run_protein_efdr_analysis(protein_results_path::String;
 
     verbose && println("Loading protein data...")
     # Determine required columns for selective loading
-    prot_cols = _get_required_protein_columns(score_qval_pairs, true, entrap_species)
+    # Protein files use :file_name, not :ms_file_idx
+    prot_cols = _get_required_protein_columns(score_qval_pairs, false, entrap_species)
     protein_results = _load_table(protein_results_path; columns=prot_cols)
     if hasproperty(protein_results, :entrap_id)
         is_sorted = issorted(protein_results, [:pg_score, :entrap_id], rev = [true, false])
