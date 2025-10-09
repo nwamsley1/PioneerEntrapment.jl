@@ -70,16 +70,23 @@ function calculate_efdr_fast(method::PairedEFDR; cuts_mode::Symbol=:targets_only
         return freq
     end
 
-    # n_targets(s): # { t >= s } for s = cuts[j]
-    idx_t = filter(!ismissing, idx_t_all)
-    T_asc = suffsum!(ztab(idx_t))
+    # n_targets(s): # { target rows with score >= s } for s = cuts[j]
+    # Filter by entrapment_label == 0 (target rows) AND use their score (e)
+    target_mask = method.entrapment_label .== 0
+    idx_e_targets = idx_e_all[target_mask]
+    idx_e_targets_valid = filter(!ismissing, idx_e_targets)
+    T_asc = suffsum!(ztab(idx_e_targets_valid))
 
-    # n_e(s): # { e >= s }
-    idx_e = filter(!ismissing, idx_e_all)
-    E_asc = suffsum!(ztab(idx_e))
+    # n_e(s): # { entrapment rows with score >= s }
+    # Filter by entrapment_label != 0 (entrapment rows) AND use their score (e)
+    entrap_mask = method.entrapment_label .!= 0
+    idx_e_entraps = idx_e_all[entrap_mask]
+    idx_e_entraps_valid = filter(!ismissing, idx_e_entraps)
+    E_asc = suffsum!(ztab(idx_e_entraps_valid))
 
     # n_ets(s): entrap >= s AND target >= s AND entrap > target
-    both_mask = .!(ismissing.(t)) .& .!(ismissing.(e))
+    # Only consider entrapment rows
+    both_mask = entrap_mask .& .!(ismissing.(t)) .& .!(ismissing.(e))
     ETS_asc = zeros(Int, K)
     if any(both_mask)
         idx_t_b = idx_t_all[both_mask]
@@ -99,9 +106,10 @@ function calculate_efdr_fast(method::PairedEFDR; cuts_mode::Symbol=:targets_only
     end
 
     # n_est(s): entrap >= s AND (target < s OR target is NA)
+    # Only consider entrapment rows
     diff = zeros(Int, K+1)
-    # target is NA & e present
-    e_only = ismissing.(t) .& .!(ismissing.(e))
+    # target is NA & e present (entrapment rows only)
+    e_only = entrap_mask .& ismissing.(t) .& .!(ismissing.(e))
     if any(e_only)
         idx_e_na = filter(x -> x isa Int && x > 0, idx_e_all[e_only])
         if !isempty(idx_e_na)
@@ -115,7 +123,8 @@ function calculate_efdr_fast(method::PairedEFDR; cuts_mode::Symbol=:targets_only
             diff .-= offs
         end
     end
-    # both present: start = idx_t + 1 .. end = idx_e
+    # both present: start = idx_t + 1 .. end = idx_e (entrapment rows only)
+    # Reuse both_mask which already includes entrap_mask
     if any(both_mask)
         bt = idx_t_all[both_mask]
         be = idx_e_all[both_mask]
