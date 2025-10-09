@@ -74,7 +74,8 @@ function _load_table(path::AbstractString; columns::Union{Nothing, Vector{Symbol
                         return DataFrame(Arrow.Table(io; mmap=false); copycols=true)
                     end
                 catch
-                    return DataFrame(Arrow.Table(path; mmap=false); copycols=true)
+                    # For stubborn network volumes: read entire file into memory first
+                    return DataFrame(Arrow.Table(read(path)); copycols=true)
                 end
             else
                 try
@@ -88,7 +89,8 @@ function _load_table(path::AbstractString; columns::Union{Nothing, Vector{Symbol
                         return DataFrame([col => tbl[col] for col in columns])
                     end
                 catch
-                    tbl = Arrow.Table(path; mmap=false)
+                    # For stubborn network volumes: read entire file into memory first
+                    tbl = Arrow.Table(read(path))
                     available_cols = propertynames(tbl)
                     missing_cols = setdiff(columns, available_cols)
                     if !isempty(missing_cols)
@@ -108,7 +110,8 @@ function _load_table(path::AbstractString; columns::Union{Nothing, Vector{Symbol
                 return DataFrame(Arrow.Table(path); copycols=true)
             catch
                 try
-                    return DataFrame(Arrow.Table(path; mmap=false); copycols=true)
+                    # For stubborn network volumes: read entire file into memory first
+                    return DataFrame(Arrow.Table(read(path)); copycols=true)
                 catch
                     return DataFrame(CSV.File(path))
                 end
@@ -124,7 +127,8 @@ function _load_table(path::AbstractString; columns::Union{Nothing, Vector{Symbol
                 return DataFrame([col => tbl[col] for col in columns])
             catch
                 try
-                    tbl = Arrow.Table(path; mmap=false)
+                    # For stubborn network volumes: read entire file into memory first
+                    tbl = Arrow.Table(read(path))
                     available_cols = propertynames(tbl)
                     missing_cols = setdiff(columns, available_cols)
                     if !isempty(missing_cols)
