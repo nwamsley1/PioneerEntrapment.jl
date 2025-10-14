@@ -82,7 +82,8 @@ out = "/Users/nathanwamsley/Data/MS_DATA/MTAC_Y_Astral/YEAST_3MIN/MTAC_Y_entrapR
 run_efdr_analysis(precursors, library;
     output_dir=out,
     r_lib=1.0,
-    paired_stride=10,      # sampling stride for paired EFDR
+    paired_stride=10,      # sampling stride for paired EFDR (only used if use_fast_paired=false)
+    use_fast_paired=true,  # use fast O(n log n) implementation (default); set to false for O(n²) validation
     plot_formats=[:png, :pdf],
     verbose=true,
 )
@@ -91,6 +92,39 @@ run_efdr_analysis(precursors, library;
 Notes
 - Passing the library as the `.poin.poin` directory is supported; the loader resolves `precursors_table.arrow` internally.
 - Prefer `precursors_long.arrow` when available; `.tsv` also works.
+
+## Paired EFDR: Fast vs Standard Implementation
+
+PioneerEntrapment.jl provides two implementations of paired EFDR:
+
+1. **Fast implementation (default)**: O(n log n) complexity using `calculate_efdr_fast()`
+   - Default behavior when `use_fast_paired=true`
+   - Significantly faster for large datasets
+   - Recommended for production use
+
+2. **Standard implementation**: O(n²) complexity using `calculate_efdr()` with stride sampling
+   - Enabled by setting `use_fast_paired=false`
+   - Uses `paired_stride` parameter to control sampling frequency
+   - Useful for validation and comparison purposes
+
+Example comparing both implementations:
+
+```julia
+# Run with fast implementation (default)
+result_fast = run_efdr_analysis(precursors, library;
+    output_dir="out_fast",
+    use_fast_paired=true,
+)
+
+# Run with standard implementation for validation
+result_standard = run_efdr_analysis(precursors, library;
+    output_dir="out_standard",
+    use_fast_paired=false,
+    paired_stride=5,  # only used when use_fast_paired=false
+)
+```
+
+Both implementations produce equivalent results, but the fast version is recommended for routine analysis.
 
 ## Using Revise for live reloads
 
@@ -128,6 +162,7 @@ run_efdr_replicate_plots(replicates;
   output_dir="./efdr_compare",
   r_lib=1.0,
   paired_stride=10,
+  use_fast_paired=true,  # use fast O(n log n) implementation (default)
   plot_formats=[:png, :pdf],
   verbose=true,
 )
@@ -168,6 +203,7 @@ using PioneerEntrapment
 run_efdr_plots("/path/to/results", "/path/to/library/.poin/.poin";
   output_dir=joinpath("/path/to/results", "efdr_out"),
   paired_stride=10,
+  use_fast_paired=true,  # use fast O(n log n) implementation (default)
   plot_formats=[:png, :pdf],
   verbose=true,
 )
