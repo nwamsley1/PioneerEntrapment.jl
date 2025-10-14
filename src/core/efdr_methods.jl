@@ -228,7 +228,7 @@ function get_paired_efdr(score::AbstractVector{<:Real}, original_target_score::A
 end
 
 """
-    add_efdr_columns!(df, library_precursors; method_types=[CombinedEFDR,PairedEFDR], score_qval_pairs=[(:score,:qval)], r=1.0, paired_stride=5, entrap_labels_override=nothing) -> Nothing
+    add_efdr_columns!(df, library_precursors; method_types=[CombinedEFDR,PairedEFDR], score_qval_pairs=[(:score,:qval)], r=1.0, paired_stride=5, use_fast_paired=true, entrap_labels_override=nothing) -> Nothing
 
 Compute EFDR columns for one or more `(score, qval)` pairs and attach them to a
 precursor-level DataFrame. If `:<score>_original_target` is absent, PairedEFDR
@@ -237,11 +237,15 @@ is skipped for that score; CombinedEFDR falls back to `score` only.
 Required columns
 - df: `:precursor_idx`, each `score` and `qval` used
 - library_precursors: `:entrapment_group_id` unless `entrap_labels_override` provided
+
+Parameters
+- use_fast_paired: If true (default), use fast O(n log n) implementation for PairedEFDR. If false, use standard O(n²) implementation.
 """
 function add_efdr_columns!(df::DataFrame, library_precursors::DataFrame;
                            method_types::Vector=[CombinedEFDR, PairedEFDR],
                            score_qval_pairs::Vector{Tuple{Symbol,Symbol}}=[(:score, :qval)],
                            r::Float64=1.0, paired_stride::Int=5,
+                           use_fast_paired::Bool=true,
                            entrap_labels_override::Union{Nothing,AbstractVector}=nothing)
     if !hasproperty(df, :precursor_idx)
         error("DataFrame must have :precursor_idx column")
@@ -277,7 +281,11 @@ function add_efdr_columns!(df::DataFrame, library_precursors::DataFrame;
             end
             method = method_type(scores, original_target_scores, entrap_labels, qvals, r)
             efdr_values = if method_type == PairedEFDR
-                calculate_efdr_fast(method; cuts_mode=:all)
+                if use_fast_paired
+                    calculate_efdr_fast(method; cuts_mode=:all)
+                else
+                    calculate_efdr(method; stride=paired_stride)
+                end
             else
                 calculate_efdr(method)
             end

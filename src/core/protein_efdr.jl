@@ -6,7 +6,7 @@ aggregates, respecting optional `:species` partitions and file identity.
 """
 
 """
-    add_protein_efdr_columns!(protein_results; method_types=[CombinedEFDR,PairedEFDR], score_qval_pairs=[(:pg_score,:qval)], r=1.0, paired_stride=5, entrap_labels_override=nothing) -> Nothing
+    add_protein_efdr_columns!(protein_results; method_types=[CombinedEFDR,PairedEFDR], score_qval_pairs=[(:pg_score,:qval)], r=1.0, paired_stride=5, use_fast_paired=true, entrap_labels_override=nothing) -> Nothing
 
 Compute EFDR for protein-level results and attach columns named like
 `"<score>_combined_efdr"` and `"<score>_paired_efdr"`.
@@ -14,12 +14,16 @@ Compute EFDR for protein-level results and attach columns named like
 If `<score>_original_target` is missing, PairedEFDR for that score is skipped.
 When `entrap_labels_override == nothing`, `:entrap_id` is used to label target
 vs entrapment proteins (0 vs non-zero).
+
+Parameters
+- use_fast_paired: If true (default), use fast O(n log n) implementation for PairedEFDR. If false, use standard O(n²) implementation.
 """
 function add_protein_efdr_columns!(protein_results::DataFrame;
                                   method_types::Vector=[CombinedEFDR, PairedEFDR],
                                   score_qval_pairs::Vector{Tuple{Symbol,Symbol}}=[(:pg_score, :qval)],
                                   r::Float64=1.0,
                                   paired_stride::Int=5,
+                                  use_fast_paired::Bool=true,
                                   entrap_labels_override::Union{Nothing,AbstractVector}=nothing)
     entrap_labels = if entrap_labels_override === nothing
         if !hasproperty(protein_results, :entrap_id)
@@ -55,7 +59,11 @@ function add_protein_efdr_columns!(protein_results::DataFrame;
             end
             method = method_type(scores, original_target_scores, entrap_labels, qvals; r=r)
             efdr_values = if method_type == PairedEFDR
-                calculate_efdr_fast(method; cuts_mode=:all)
+                if use_fast_paired
+                    calculate_efdr_fast(method; cuts_mode=:all)
+                else
+                    calculate_efdr(method; stride=paired_stride)
+                end
             else
                 calculate_efdr(method)
             end
