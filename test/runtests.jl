@@ -24,7 +24,7 @@ using Arrow
 
     @testset "Scoring Function Tests" begin
         test_df = DataFrame(
-            entrap_pair_id = [1, 1, 2, 2, missing],
+        entrapment_pair_id = [1, 1, 2, 2, missing],
             score = [0.9, 0.8, 0.7, 0.6, 0.5],
             precursor_idx = [1, 2, 3, 4, 5]
         )

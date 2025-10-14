@@ -51,6 +51,8 @@ function _parse_args(args)::Dict{String,Any}
             d["paired_step"] = parse(Int, take())
         elseif a == "--replicates-config"
             d["replicates_config"] = take()
+        elseif a == "--entrap-species"
+            d["entrap_species"] = take()
         elseif a == "--verbose"
             d["verbose"] = true
         elseif a == "-h" || a == "--help"
@@ -74,6 +76,7 @@ Required (depending on mode):
   --library PATH                   (for precursor or both)
   --protein-results PATH           (for protein or both)
   --replicates-config PATH         (JSON/YAML/TOML list for replicates mode)
+  --entrap-species NAME            (treat single-species rows as entrapment; disables paired EFDR)
 
 Optional:
   --outdir PATH                    (default: efdr_out)
@@ -134,6 +137,7 @@ function julia_main(args)::Int
         plot_formats = get(parsed, "plot_formats", Symbol[:png, :pdf])
         paired_step = get(parsed, "paired_step", 5)
         verbose = get(parsed, "verbose", true)
+        entrap_species = get(parsed, "entrap_species", nothing)
 
         if mode == "replicates" || haskey(parsed, "replicates_config")
             if !haskey(parsed, "replicates_config")
@@ -152,7 +156,7 @@ function julia_main(args)::Int
                 println("Missing required --precursor-results or --library\n\n" * usage())
                 return 2
             end
-            run_efdr_analysis(pr, lib; output_dir=outdir, r_lib=r_lib, paired_stride=paired_step, plot_formats=plot_formats, verbose=verbose)
+            run_efdr_analysis(pr, lib; output_dir=outdir, r_lib=r_lib, paired_stride=paired_step, plot_formats=plot_formats, verbose=verbose, entrap_species=entrap_species)
             return 0
         elseif mode == "protein"
             prot = get(parsed, "protein_results", nothing)
@@ -160,7 +164,7 @@ function julia_main(args)::Int
                 println("Missing required --protein-results\n\n" * usage())
                 return 2
             end
-            run_protein_efdr_analysis(prot; output_dir=outdir, r_lib=r_lib, paired_stride=paired_step, plot_formats=plot_formats, verbose=verbose)
+            run_protein_efdr_analysis(prot; output_dir=outdir, r_lib=r_lib, paired_stride=paired_step, plot_formats=plot_formats, verbose=verbose, entrap_species=entrap_species)
             return 0
         elseif mode == "both"
             pr = get(parsed, "precursor_results", nothing)
@@ -170,7 +174,7 @@ function julia_main(args)::Int
                 println("Missing required inputs for both mode\n\n" * usage())
                 return 2
             end
-            run_both_analyses(; precursor_results_path=pr, library_precursors_path=lib, protein_results_path=prot, output_dir=outdir, r_lib=r_lib, paired_stride=paired_step, plot_formats=plot_formats, verbose=verbose)
+            run_both_analyses(; precursor_results_path=pr, library_precursors_path=lib, protein_results_path=prot, output_dir=outdir, r_lib=r_lib, paired_stride=paired_step, plot_formats=plot_formats, verbose=verbose, entrap_species=entrap_species)
             return 0
         else
             println("Invalid or missing --mode\n\n" * usage())
