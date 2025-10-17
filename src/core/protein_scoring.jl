@@ -2,131 +2,29 @@ using DataFrames
 using Dictionaries
 
 """
-    get_best_protein_representative(protein_group::String, peptide_indices,
-                                     precursors_library::DataFrame) -> String
-
-Given a semicolon-delimited protein group and its supporting peptides, return the
-single protein that appears most frequently in those peptides' protein_groups.
-
-Arguments
-- protein_group: e.g., "P12345;Q67890;O11111"
-- peptide_indices: Iterable of precursor_idx values from :peptides column (can contain missing values)
-- precursors_library: Must have :accession_numbers column (or :protein_groups/:protein as fallback)
-
-Returns
-- Single protein ID with maximum support, or first protein if library lookup fails
-
-Algorithm
-1. Parse protein_group into candidate proteins
-2. For each peptide in peptide_indices:
-   - Look up peptide's protein associations in precursors_library
-   - For each candidate protein, check if it appears in peptide's associations
-   - Increment count for matching candidates
-3. Return candidate with highest count
-
-Edge Cases
-- Single-protein groups: Return immediately
-- Empty peptide_indices: Fall back to first protein
-- Missing peptide_indices: Fall back to first protein
-- Invalid precursor_idx: Skip and continue
-- Tie in counts: Use first occurrence order
-"""
-function get_best_protein_representative(protein_group::String,
-                                          peptide_indices,
-                                          precursors_library::DataFrame)
-    # Split the group into candidate proteins
-    candidates = split(protein_group, ';')
-
-    # Handle single-protein groups
-    if length(candidates) == 1
-        return String(strip(candidates[1]))
-    end
-
-    # Handle missing/empty peptides - fall back to first
-    if ismissing(peptide_indices) || isempty(peptide_indices)
-        return String(strip(candidates[1]))
-    end
-
-    # Initialize count dictionary for each candidate
-    protein_counts = Dict{String, Int}()
-    for protein in candidates
-        protein_counts[String(strip(protein))] = 0
-    end
-
-    # Determine column name (check :accession_numbers first, then :protein_groups, then :protein)
-    protein_col = if hasproperty(precursors_library, :accession_numbers)
-        :accession_numbers
-    elseif hasproperty(precursors_library, :protein_groups)
-        :protein_groups
-    elseif hasproperty(precursors_library, :protein)
-        :protein
-    else
-        @warn "Library missing :accession_numbers, :protein_groups, or :protein column, falling back to first protein"
-        return String(strip(candidates[1]))
-    end
-
-    # Query each peptide's protein_groups in library
-    for prec_idx in peptide_indices
-        # Skip missing entries in peptide_indices
-        if ismissing(prec_idx)
-            continue
-        end
-
-        # Validate index bounds
-        if prec_idx < 1 || prec_idx > nrow(precursors_library)
-            continue
-        end
-
-        # Get peptide's protein group annotation
-        peptide_protein_group = precursors_library[prec_idx, protein_col]
-
-        # Handle missing values
-        if ismissing(peptide_protein_group)
-            continue
-        end
-
-        peptide_proteins = split(String(peptide_protein_group), ';')
-
-        # Increment count for any candidate found in this peptide
-        for pep_prot in peptide_proteins
-            pep_prot_clean = String(strip(pep_prot))
-            if haskey(protein_counts, pep_prot_clean)
-                protein_counts[pep_prot_clean] += 1
-            end
-        end
-    end
-
-    # Return the protein with maximum count (ties broken by first occurrence)
-    best_protein = candidates[1]  # default fallback
-    max_count = 0
-    for protein in candidates  # iterate in order to break ties consistently
-        count = protein_counts[String(strip(protein))]
-        if count > max_count
-            max_count = count
-            best_protein = protein
-        end
-    end
-
-    return String(strip(best_protein))
-end
-
-"""
-    add_original_target_protein_scores!(protein_results::DataFrame, precursors_library::DataFrame; score_col=:pg_score) -> Nothing
+    add_original_target_protein_scores!(protein_results::DataFrame; score_col=:pg_score) -> Nothing
 
 Add a `"<score>_original_target"` column capturing, for each protein row,
-the score of the original target protein (entrap_id == 0) with the same
-`file` and `species`. For protein group identifiers that contain multiple
-entries separated by `;`, the protein with the most peptide evidence is
-used as the group key.
+the score of the original target protein (entrap_id == 0) that has the maximum
+protein overlap with the entrapment group.
+
+Pairing Strategy:
+For each entrapment protein group, find the target group (in the same file and species)
+that shares the most protein accessions. For example:
+- Entrapment: "PROT1;PROT2;PROT3"
+- Target candidates: "PROT1" (overlap=1) vs "PROT2;PROT3;PROT4" (overlap=2)
+- Result: Pair with "PROT2;PROT3;PROT4" (best match)
+
+For global results (file="global"), the full protein string is used as a unique key
+for exact matching.
 
 If the row itself is the original target, its own score is used. If there is no
 matching original target, the value is set to `-1.0f0`.
 
 Required columns
-- protein_results: `:protein`, `:entrap_id`, `:species`, `:peptides`, `score_col`, and either `:ms_file_idx` or `:file_name`.
-- precursors_library: DataFrame with `:protein_groups` or `:protein` column for evidence-based selection.
+- protein_results: `:protein`, `:entrap_id`, `:species`, `score_col`, and either `:ms_file_idx` or `:file_name`.
 """
-function add_original_target_protein_scores!(protein_results::DataFrame, precursors_library::DataFrame; score_col=:pg_score)
+function add_original_target_protein_scores!(protein_results::DataFrame; score_col=:pg_score)
     required_cols = [:protein, :entrap_id, :species]
     missing_cols = [col for col in required_cols if !hasproperty(protein_results, col)]
     if !isempty(missing_cols)
@@ -142,68 +40,105 @@ function add_original_target_protein_scores!(protein_results::DataFrame, precurs
     else
         error("DataFrame must have either :ms_file_idx or :file_name column")
     end
+
     original_target_col = Symbol(String(score_col) * "_original_target")
-    # Keys: (file, species, protein). Species column is always required.
-    # For global results (file="global"), use full protein string. For per-file, use first from semicolon-split.
-    protein_to_target = Dictionary{Tuple{Any, String, String}, Float32}()
-    for row in eachrow(protein_results)
+
+    # Build index of target groups per (file, species)
+    # Structure: Dict{(file_id, species), Vector{(row_idx, protein_group_string, protein_set, score)}}
+    target_index = Dict{Tuple{Any, String}, Vector{Tuple{Int, String, Set{String}, Float32}}}()
+
+    for (idx, row) in enumerate(eachrow(protein_results))
         if row.entrap_id == 0 && !ismissing(row[score_col])
+            file_id = row[file_col]
             species = String(row.species)
-            # Global results: use full protein string. Per-file: use evidence-based selection.
-            is_global = row[file_col] == "global" || (row[file_col] isa Integer && row[file_col] == 0)
-            protkey = if is_global
-                String(row.protein)
+            protein_group = String(row.protein)
+
+            # For global results, use full protein string; for per-file, parse into set
+            is_global = file_id == "global" || (file_id isa Integer && file_id == 0)
+
+            if is_global
+                # Global: exact match only, store full string as single-element set
+                protein_set = Set([protein_group])
             else
-                # Use evidence-based selection
-                peptide_indices = hasproperty(protein_results, :peptides) ? row.peptides : missing
-                get_best_protein_representative(String(row.protein), peptide_indices, precursors_library)
+                # Per-file: parse semicolon-delimited proteins into set
+                protein_set = Set(String(strip(p)) for p in split(protein_group, ';'))
             end
-            key = (row[file_col], species, protkey)
-            if haskey(protein_to_target, key)
-                error("Duplicate target protein found: protein key '$(protkey)' appears multiple times with entrap_id=0 in file '$(row[file_col])'.")
+
+            key = (file_id, species)
+            if !haskey(target_index, key)
+                target_index[key] = Tuple{Int, String, Set{String}, Float32}[]
             end
-            insert!(protein_to_target, key, Float32(row[score_col]))
+
+            push!(target_index[key], (idx, protein_group, protein_set, Float32(row[score_col])))
         end
     end
+
+    # For each row, find best matching target
     original_target_scores = Float32[]
+
     for row in eachrow(protein_results)
-        if !ismissing(row[score_col])
-            if row.entrap_id == 0
-                push!(original_target_scores, Float32(row[score_col]))
-            else
-                species = String(row.species)
-                # Global results: use full protein string. Per-file: use evidence-based selection.
-                is_global = row[file_col] == "global" || (row[file_col] isa Integer && row[file_col] == 0)
-                protkey = if is_global
-                    String(row.protein)
-                else
-                    # Use evidence-based selection
-                    peptide_indices = hasproperty(protein_results, :peptides) ? row.peptides : missing
-                    get_best_protein_representative(String(row.protein), peptide_indices, precursors_library)
-                end
-                key = (row[file_col], species, protkey)
-                if haskey(protein_to_target, key)
-                    push!(original_target_scores, protein_to_target[key])
+        if ismissing(row[score_col])
+            push!(original_target_scores, -1.0f0)
+            continue
+        end
+
+        if row.entrap_id == 0
+            # Target rows pair with themselves
+            push!(original_target_scores, Float32(row[score_col]))
+        else
+            # Entrapment rows: find best matching target
+            file_id = row[file_col]
+            species = String(row.species)
+            protein_group = String(row.protein)
+
+            is_global = file_id == "global" || (file_id isa Integer && file_id == 0)
+
+            key = (file_id, species)
+            candidates = get(target_index, key, Tuple{Int, String, Set{String}, Float32}[])
+
+            if isempty(candidates)
+                # No targets in this file/species
+                push!(original_target_scores, -1.0f0)
+            elseif is_global
+                # Global: exact string match
+                match_idx = findfirst(c -> c[2] == protein_group, candidates)
+                if match_idx !== nothing
+                    push!(original_target_scores, candidates[match_idx][4])
                 else
                     push!(original_target_scores, -1.0f0)
                 end
+            else
+                # Per-file: find target with maximum protein overlap
+                entrap_proteins = Set(String(strip(p)) for p in split(protein_group, ';'))
+
+                best_score = -1.0f0
+                max_overlap = 0
+
+                for (_, target_group, target_set, target_score) in candidates
+                    overlap = length(intersect(entrap_proteins, target_set))
+                    if overlap > max_overlap
+                        max_overlap = overlap
+                        best_score = target_score
+                    end
+                end
+
+                push!(original_target_scores, best_score)
             end
-        else
-            push!(original_target_scores, -1.0f0)
         end
     end
+
     protein_results[!, original_target_col] = original_target_scores
     return nothing
 end
 
 """
-    add_original_target_protein_scores!(protein_results::DataFrame, precursors_library::DataFrame, score_cols::Vector{Symbol}) -> Nothing
+    add_original_target_protein_scores!(protein_results::DataFrame, score_cols::Vector{Symbol}) -> Nothing
 
 Vectorized overload to compute original target columns for multiple score fields.
 """
-function add_original_target_protein_scores!(protein_results::DataFrame, precursors_library::DataFrame, score_cols::Vector{Symbol})
+function add_original_target_protein_scores!(protein_results::DataFrame, score_cols::Vector{Symbol})
     for score_col in score_cols
-        add_original_target_protein_scores!(protein_results, precursors_library; score_col=score_col)
+        add_original_target_protein_scores!(protein_results; score_col=score_col)
     end
     return nothing
 end
