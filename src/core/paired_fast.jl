@@ -171,6 +171,7 @@ function calculate_efdr_fast(method::PairedEFDR; cuts_mode::Symbol=:targets_only
 
     # Enforce monotonicity over the sorted (-score, qval) order
     sort_indices = sortperm(collect(zip(-method.score, method.qval)))
+    
     fdr = Inf
     @inbounds @fastmath for i in reverse(sort_indices)
         v = entrapment_fdr[i]
@@ -182,7 +183,7 @@ function calculate_efdr_fast(method::PairedEFDR; cuts_mode::Symbol=:targets_only
             fdr = v
         end
     end
-
+    
     return entrapment_fdr
 end
 
