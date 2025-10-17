@@ -295,7 +295,7 @@ function run_efdr_plots(results_dir::String, library_path::String;
     elseif prec !== nothing
         return run_efdr_analysis(prec, library_path; output_dir=output_dir, r_lib=r_lib, paired_stride=paired_stride, plot_formats=plot_formats, use_fast_paired=use_fast_paired, verbose=verbose)
     elseif prot !== nothing
-        return run_protein_efdr_analysis(prot; output_dir=output_dir, r_lib=r_lib, paired_stride=paired_stride, plot_formats=plot_formats, use_fast_paired=use_fast_paired, verbose=verbose)
+        return run_protein_efdr_analysis(prot, library_path; output_dir=output_dir, r_lib=r_lib, paired_stride=paired_stride, plot_formats=plot_formats, use_fast_paired=use_fast_paired, verbose=verbose)
     else
         error("No standard result files found in $(results_dir). Expected precursors_long.(arrow|tsv) and/or protein_groups_long.(arrow|tsv)")
     end
@@ -441,7 +441,7 @@ function run_efdr_replicate_plots(replicates::Vector; output_dir::String="efdr_o
                 prot_global_pairs = [(s,q) for (s,q) in protein_score_qval_pairs if occursin("global", String(s))]
                 prot_perfile_pairs = [(s,q) for (s,q) in protein_score_qval_pairs if !occursin("global", String(s))]
                 if !isempty(prot_perfile_pairs)
-                    add_original_target_protein_scores!(protein_results, [s for (s,_) in prot_perfile_pairs])
+                    add_original_target_protein_scores!(protein_results, library_precursors, [s for (s,_) in prot_perfile_pairs])
                     add_protein_efdr_columns!(protein_results; score_qval_pairs=prot_perfile_pairs, r=r_lib, paired_stride=paired_stride, use_fast_paired=use_fast_paired)
                     for (s, _) in prot_perfile_pairs
                         for method_type in (CombinedEFDR, PairedEFDR)
@@ -457,7 +457,7 @@ function run_efdr_replicate_plots(replicates::Vector; output_dir::String="efdr_o
                 end
                 if !isempty(prot_global_pairs)
                     global_prot_df = create_global_protein_results_df(protein_results; score_col=first(prot_global_pairs)[1])
-                    add_original_target_protein_scores!(global_prot_df, [s for (s,_) in prot_global_pairs])
+                    add_original_target_protein_scores!(global_prot_df, library_precursors, [s for (s,_) in prot_global_pairs])
                     add_protein_efdr_columns!(global_prot_df; score_qval_pairs=prot_global_pairs, r=r_lib, paired_stride=paired_stride, use_fast_paired=use_fast_paired)
                     for (s, _) in prot_global_pairs
                         for method_type in (CombinedEFDR, PairedEFDR)
@@ -769,7 +769,7 @@ function generate_markdown_report(prec_results::DataFrame, library_precursors::D
 end
 
 """
-    run_protein_efdr_analysis(protein_results_path::String;
+    run_protein_efdr_analysis(protein_results_path::String, library_precursors_path::String;
                               output_dir::String="efdr_out",
                               method_types=[CombinedEFDR, PairedEFDR],
                               score_qval_pairs=[(:global_pg_score, :global_qval), (:pg_score, :qval)],
@@ -781,7 +781,7 @@ end
 Parameters
 - use_fast_paired: If true (default), use fast O(n log n) implementation for PairedEFDR. If false, use standard O(n²) implementation.
 """
-function run_protein_efdr_analysis(protein_results_path::String;
+function run_protein_efdr_analysis(protein_results_path::String, library_precursors_path::String;
                                   output_dir::String="efdr_out",
                                   method_types::Vector=[CombinedEFDR, PairedEFDR],
                                   score_qval_pairs::Vector{Tuple{Symbol,Symbol}}=[(:global_pg_score, :global_qval), (:pg_score, :qval)],
@@ -798,8 +798,16 @@ function run_protein_efdr_analysis(protein_results_path::String;
     verbose && println("Loading protein data...")
     # Determine required columns for selective loading
     # Protein files use :file_name, not :ms_file_idx
+    # Add :peptides column for evidence-based protein selection
     prot_cols = _get_required_protein_columns(score_qval_pairs, false, entrap_species)
+    push!(prot_cols, :peptides)
+    prot_cols = unique(prot_cols)
     protein_results = _load_table(protein_results_path; columns=prot_cols)
+
+    # Load library precursors for evidence-based protein selection
+    # Only need protein_groups column
+    lib_cols = Symbol[:protein_groups, :protein]
+    library_precursors = _load_table(library_precursors_path; columns=lib_cols)
     if hasproperty(protein_results, :entrap_id)
         is_sorted = issorted(protein_results, [:pg_score, :entrap_id], rev = [true, false])
         @info is_sorted ? "Protein results are sorted by pg_score and entrap_id" :
@@ -851,7 +859,7 @@ function run_protein_efdr_analysis(protein_results_path::String;
     if !isempty(perfile_scores)
         verbose && println("Processing per-file protein scores...")
         if entrap_species === nothing
-            add_original_target_protein_scores!(protein_results, perfile_scores)
+            add_original_target_protein_scores!(protein_results, library_precursors, perfile_scores)
         end
         perfile_pairs = [(s, q) for (s, q) in score_qval_pairs if s in perfile_scores]
         if !isempty(perfile_pairs)
@@ -871,7 +879,7 @@ function run_protein_efdr_analysis(protein_results_path::String;
     if !isnothing(global_results_df) && !isempty(global_scores)
         verbose && println("Processing global protein scores...")
         if entrap_species === nothing
-            add_original_target_protein_scores!(global_results_df, global_scores)
+            add_original_target_protein_scores!(global_results_df, library_precursors, global_scores)
         end
         global_pairs = [(s, q) for (s, q) in score_qval_pairs if s in global_scores]
         if !isempty(global_pairs)
@@ -1031,7 +1039,7 @@ function run_both_analyses(; precursor_results_path::AbstractString,
 
     prec = run_efdr_analysis(precursor_results_path, library_precursors_path;
                              output_dir=out_prec, r_lib=r_lib, paired_stride=paired_stride, plot_formats=plot_formats, use_fast_paired=use_fast_paired, verbose=verbose, entrap_species=entrap_species)
-    prot = run_protein_efdr_analysis(protein_results_path;
+    prot = run_protein_efdr_analysis(protein_results_path, library_precursors_path;
                                      output_dir=out_prot, r_lib=r_lib, paired_stride=paired_stride, plot_formats=plot_formats, use_fast_paired=use_fast_paired, verbose=verbose, entrap_species=entrap_species)
 
     return (precursor=prec, protein=prot)
