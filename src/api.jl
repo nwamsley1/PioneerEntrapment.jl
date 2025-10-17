@@ -805,8 +805,8 @@ function run_protein_efdr_analysis(protein_results_path::String, library_precurs
     protein_results = _load_table(protein_results_path; columns=prot_cols)
 
     # Load library precursors for evidence-based protein selection
-    # Only need protein_groups column
-    lib_cols = Symbol[:protein_groups, :protein]
+    # Only need accession_numbers column (protein associations for each peptide)
+    lib_cols = Symbol[:accession_numbers]
     library_precursors = _load_table(library_precursors_path; columns=lib_cols)
     if hasproperty(protein_results, :entrap_id)
         is_sorted = issorted(protein_results, [:pg_score, :entrap_id], rev = [true, false])

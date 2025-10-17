@@ -53,13 +53,15 @@ function get_best_protein_representative(protein_group::String,
         protein_counts[String(strip(protein))] = 0
     end
 
-    # Determine column name (check :protein_groups first, then :protein)
-    protein_col = if hasproperty(precursors_library, :protein_groups)
+    # Determine column name (check :accession_numbers first, then :protein_groups, then :protein)
+    protein_col = if hasproperty(precursors_library, :accession_numbers)
+        :accession_numbers
+    elseif hasproperty(precursors_library, :protein_groups)
         :protein_groups
     elseif hasproperty(precursors_library, :protein)
         :protein
     else
-        @warn "Library missing :protein_groups or :protein column, falling back to first protein"
+        @warn "Library missing :accession_numbers, :protein_groups, or :protein column, falling back to first protein"
         return String(strip(candidates[1]))
     end
 
