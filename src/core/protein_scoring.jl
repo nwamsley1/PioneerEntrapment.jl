@@ -2,7 +2,7 @@ using DataFrames
 using Dictionaries
 
 """
-    get_best_protein_representative(protein_group::String, peptide_indices::Union{Missing, Vector{UInt32}},
+    get_best_protein_representative(protein_group::String, peptide_indices,
                                      precursors_library::DataFrame) -> String
 
 Given a semicolon-delimited protein group and its supporting peptides, return the
@@ -10,8 +10,8 @@ single protein that appears most frequently in those peptides' protein_groups.
 
 Arguments
 - protein_group: e.g., "P12345;Q67890;O11111"
-- peptide_indices: Vector of precursor_idx values from :peptides column (can contain missing)
-- precursors_library: Must have :protein_groups column (or :protein, depending on schema)
+- peptide_indices: Iterable of precursor_idx values from :peptides column (can contain missing values)
+- precursors_library: Must have :accession_numbers column (or :protein_groups/:protein as fallback)
 
 Returns
 - Single protein ID with maximum support, or first protein if library lookup fails
@@ -19,8 +19,8 @@ Returns
 Algorithm
 1. Parse protein_group into candidate proteins
 2. For each peptide in peptide_indices:
-   - Look up peptide's :protein_groups in precursors_library
-   - For each candidate protein, check if it appears in peptide's groups
+   - Look up peptide's protein associations in precursors_library
+   - For each candidate protein, check if it appears in peptide's associations
    - Increment count for matching candidates
 3. Return candidate with highest count
 
@@ -32,7 +32,7 @@ Edge Cases
 - Tie in counts: Use first occurrence order
 """
 function get_best_protein_representative(protein_group::String,
-                                          peptide_indices::Union{Missing, Vector{UInt32}},
+                                          peptide_indices,
                                           precursors_library::DataFrame)
     # Split the group into candidate proteins
     candidates = split(protein_group, ';')
