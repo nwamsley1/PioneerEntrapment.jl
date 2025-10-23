@@ -216,6 +216,74 @@ function _get_required_lib_columns(entrap_species::Union{Nothing,AbstractString}
 end
 
 """
+    _load_boosted_prob_columns!(df::DataFrame, path::AbstractString) -> Nothing
+
+Load MBR-boosted probability columns from the file if they exist and are not already in the DataFrame.
+
+This function checks if `MBR_boosted_prec_prob` and `MBR_boosted_global_prob` columns exist in the
+source file and adds them to the DataFrame if available.
+
+Arguments
+- df: DataFrame to add columns to
+- path: Path to the source file
+"""
+function _load_boosted_prob_columns!(df::DataFrame, path::AbstractString)
+    # Only works with Arrow files
+    lower = lowercase(path)
+    if !(endswith(lower, ".arrow") || endswith(lower, ".feather"))
+        return nothing
+    end
+
+    try
+        tbl = Arrow.Table(path)
+        available_cols = propertynames(tbl)
+
+        # Load MBR_boosted_prec_prob if available and not already loaded
+        if :MBR_boosted_prec_prob in available_cols && !hasproperty(df, :MBR_boosted_prec_prob)
+            df[!, :MBR_boosted_prec_prob] = tbl[:MBR_boosted_prec_prob]
+        end
+
+        # Load MBR_boosted_global_prob if available and not already loaded
+        if :MBR_boosted_global_prob in available_cols && !hasproperty(df, :MBR_boosted_global_prob)
+            df[!, :MBR_boosted_global_prob] = tbl[:MBR_boosted_global_prob]
+        end
+    catch
+        # If we can't load, just skip silently
+    end
+
+    return nothing
+end
+
+"""
+    _update_score_qval_pairs(df::DataFrame, score_qval_pairs::Vector{Tuple{Symbol,Symbol}}) -> Vector{Tuple{Symbol,Symbol}}
+
+Update score-qval pairs to use MBR-boosted columns when available in the DataFrame.
+
+Returns
+- Updated vector of (score_col, qval_col) tuples with boosted columns where available
+
+If `MBR_boosted_prec_prob` exists in the DataFrame, pairs using `:prec_prob` will be updated to use it.
+If `MBR_boosted_global_prob` exists in the DataFrame, pairs using `:global_prob` will be updated to use it.
+"""
+function _update_score_qval_pairs(df::DataFrame, score_qval_pairs::Vector{Tuple{Symbol,Symbol}})
+    updated_pairs = Tuple{Symbol,Symbol}[]
+
+    for (score_col, qval_col) in score_qval_pairs
+        # Check if we should use boosted version
+        new_score_col = score_col
+        if score_col == :prec_prob && hasproperty(df, :MBR_boosted_prec_prob)
+            new_score_col = :MBR_boosted_prec_prob
+        elseif score_col == :global_prob && hasproperty(df, :MBR_boosted_global_prob)
+            new_score_col = :MBR_boosted_global_prob
+        end
+
+        push!(updated_pairs, (new_score_col, qval_col))
+    end
+
+    return updated_pairs
+end
+
+"""
     _get_required_protein_columns(score_qval_pairs, has_file_idx, entrap_species) -> Vector{Symbol}
 
 Determine required columns for loading protein results.
@@ -369,6 +437,12 @@ function run_efdr_replicate_plots(replicates::Vector; output_dir::String="efdr_o
         lib_cols = _get_required_lib_columns(nothing, false)
         prec_results = _load_table(String(pr_path); columns=prec_cols)
         library_precursors = _load_table(String(lib_path); columns=lib_cols)
+
+        # Load boosted probability columns if available
+        _load_boosted_prob_columns!(prec_results, String(pr_path))
+
+        # Update score_qval_pairs to use boosted columns if available
+        score_qval_pairs = _update_score_qval_pairs(prec_results, score_qval_pairs)
 
         # Filter non-targets if present
         if hasproperty(prec_results, :target)
@@ -524,8 +598,14 @@ function run_efdr_analysis(prec_results_path::String, library_precursors_path::S
     prec_results = _load_table(prec_results_path; columns=prec_cols)
     library_precursors = _load_table(library_precursors_path; columns=lib_cols)
 
-    verbose && println("Loaded $(nrow(prec_results)) precursor results ($(length(prec_cols)) columns)")
-    verbose && println("Loaded $(nrow(library_precursors)) library precursors ($(length(lib_cols)) columns)")
+    # Load boosted probability columns if available
+    _load_boosted_prob_columns!(prec_results, prec_results_path)
+
+    # Update score_qval_pairs to use boosted columns if available
+    score_qval_pairs = _update_score_qval_pairs(prec_results, score_qval_pairs)
+
+    verbose && println("Loaded $(nrow(prec_results)) precursor results ($(ncol(prec_results)) columns)")
+    verbose && println("Loaded $(nrow(library_precursors)) library precursors ($(ncol(library_precursors)) columns)")
 
     original_rows = nrow(prec_results)
     if hasproperty(prec_results, :target)
