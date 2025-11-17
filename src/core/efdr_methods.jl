@@ -228,7 +228,7 @@ function get_paired_efdr(score::AbstractVector{<:Real}, original_target_score::A
 end
 
 """
-    add_efdr_columns!(df, library_precursors; method_types=[CombinedEFDR,PairedEFDR], score_qval_pairs=[(:score,:qval)], r=1.0, paired_stride=5, use_fast_paired=true, entrap_labels_override=nothing) -> Nothing
+    add_efdr_columns!(df, library_precursors; method_types=[CombinedEFDR,PairedEFDR], score_qval_pairs=[(:score,:qval)], r=1.0, max_evaluation_points=10_000, use_fast_paired=true, entrap_labels_override=nothing) -> Nothing
 
 Compute EFDR columns for one or more `(score, qval)` pairs and attach them to a
 precursor-level DataFrame. If `:<score>_original_target` is absent, PairedEFDR
@@ -239,12 +239,13 @@ Required columns
 - library_precursors: `:entrapment_group_id` unless `entrap_labels_override` provided
 
 Parameters
+- max_evaluation_points: Maximum number of evaluation points for PairedEFDR (default 10,000). Stride is calculated adaptively.
 - use_fast_paired: If true (default), use fast O(n log n) implementation for PairedEFDR. If false, use standard O(n²) implementation.
 """
 function add_efdr_columns!(df::DataFrame, library_precursors::DataFrame;
                            method_types::Vector=[CombinedEFDR, PairedEFDR],
                            score_qval_pairs::Vector{Tuple{Symbol,Symbol}}=[(:score, :qval)],
-                           r::Float64=1.0, paired_stride::Int=5,
+                           r::Float64=1.0, max_evaluation_points::Int=10_000,
                            use_fast_paired::Bool=true,
                            entrap_labels_override::Union{Nothing,AbstractVector}=nothing)
     if !hasproperty(df, :precursor_idx)
@@ -272,6 +273,11 @@ function add_efdr_columns!(df::DataFrame, library_precursors::DataFrame;
         have_original = hasproperty(df, original_target_col)
         original_target_scores = have_original ? Float64.(df[!, original_target_col]) : copy(scores)
         qvals = Float64.(df[!, qval_col])
+
+        # Calculate adaptive stride based on dataset size
+        n_psms = length(scores)
+        adaptive_stride = max(1, ceil(Int, n_psms / max_evaluation_points))
+
         for method_type in method_types
             method_name = method_type == CombinedEFDR ? "combined" : method_type == PairedEFDR ? "paired" : lowercase(string(method_type))
             efdr_col = Symbol(String(score_col) * "_" * method_name * "_efdr")
@@ -282,9 +288,11 @@ function add_efdr_columns!(df::DataFrame, library_precursors::DataFrame;
             method = method_type(scores, original_target_scores, entrap_labels, qvals, r)
             efdr_values = if method_type == PairedEFDR
                 if use_fast_paired
+                    @info "PairedEFDR ($score_col): Using fast O(n log n) implementation (evaluates at all unique score cuts)"
                     calculate_efdr_fast(method; cuts_mode=:all)
                 else
-                    calculate_efdr(method; stride=paired_stride)
+                    @info "PairedEFDR ($score_col): Using strided O(n²) implementation with adaptive_stride=$adaptive_stride (n_psms=$n_psms, max_evaluation_points=$max_evaluation_points)"
+                    calculate_efdr(method; stride=adaptive_stride)
                 end
             else
                 calculate_efdr(method)

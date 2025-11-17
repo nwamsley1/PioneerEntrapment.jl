@@ -11,6 +11,29 @@ catch
     # If GR is not the active backend, this is a no-op
 end
 
+"""
+Downsample a sorted DataFrame to a maximum number of points while preserving visual fidelity.
+Uses stratified sampling to ensure important regions (low q-values) are well-represented.
+"""
+function _downsample_for_plotting(df::DataFrame, qval_col::Symbol, max_points::Int=50_000)
+    n = nrow(df)
+    if n <= max_points
+        return df
+    end
+
+    # Use stratified sampling: more points at low q-values, fewer at high
+    # Take every Nth row where N = ceil(n / max_points)
+    stride = ceil(Int, n / max_points)
+    indices = 1:stride:n
+
+    # Always include the last row
+    if indices[end] != n
+        indices = vcat(collect(indices), n)
+    end
+
+    return df[indices, :]
+end
+
 function _auto_axis_limits(df::DataFrame, qval_col::Symbol, efdr_cols::Vector{Symbol})
     xvals = skipmissing(df[!, qval_col])
     xmax = maximum(xvals; init=0.0)
@@ -134,6 +157,7 @@ function plot_efdr_comparison_replicates(dfs::Vector{DataFrame}, score_col::Symb
         push!(efdr_cols, Symbol(String(score_col) * "_" * method_name * "_efdr"))
     end
     # Combine limits
+    println("  - Calculating axis limits across replicates...")
     global_x = (0.0, 0.01)
     global_y = (0.0, 0.01)
     for df in dfs
@@ -145,10 +169,20 @@ function plot_efdr_comparison_replicates(dfs::Vector{DataFrame}, score_col::Symb
     max_val = min(global_x[2], global_y[2])
     plot!(p, [0, max_val], [0, max_val], label="y=x", linestyle=:dash, color=:gray, alpha=0.5)
 
+    println("  - Sorting and plotting data...")
     shown_label = Dict{UnionAll,Bool}(CombinedEFDR=>false, PairedEFDR=>false)
     for (rid, df) in enumerate(dfs)
+        println("    - Sorting replicate $(rid) ($(nrow(df)) rows)...")
         sorted_indices = sortperm(df[!, qval_col])
         sdf = df[sorted_indices, :]
+
+        # Downsample if dataset is very large
+        original_rows = nrow(sdf)
+        sdf = _downsample_for_plotting(sdf, qval_col, 50_000)
+        if nrow(sdf) < original_rows
+            println("    - Downsampled from $(original_rows) to $(nrow(sdf)) points for plotting")
+        end
+        println("    - Adding to plot...")
         for method_type in method_types
             method_name = method_type == CombinedEFDR ? "combined" : "paired"
             efdr_col = Symbol(String(score_col) * "_" * method_name * "_efdr")
@@ -192,18 +226,25 @@ function save_efdr_replicate_plots(pairdfs::Dict{Symbol, Vector{DataFrame}}, out
                                    formats::Vector{Symbol}=[:png, :pdf],
                                    title_suffix::AbstractString="")
     mkpath(output_dir)
-    for (score_col, qval_col) in score_qval_pairs
+    println("Generating replicate plots for $(length(score_qval_pairs)) score pairs...")
+    for (idx, (score_col, qval_col)) in enumerate(score_qval_pairs)
+        println("\n[$(idx)/$(length(score_qval_pairs))] Processing plots for $(score_col)...")
         dfs = get(pairdfs, score_col, DataFrame[])
         if isempty(dfs)
             @warn "No replicate data available for $(score_col); skipping."
             continue
         end
+        total_rows = sum(nrow(df) for df in dfs)
+        println("  - $(length(dfs)) replicates, total $(total_rows) rows")
         labels = get(replicate_labels_map, score_col, String[])
         title = isempty(title_suffix) ? nothing : "Entrapment vs Decoy FDR (Replicates) $(title_suffix)"
         kwargs = isempty(title_suffix) ? (;) : (; title=title)
+        println("  - Generating plot (this may take a while for large datasets)...")
         p = plot_efdr_comparison_replicates(dfs, score_col, qval_col; method_types=method_types, replicate_labels=labels, kwargs...)
+        println("  - Plot generated, saving files...")
         for format in formats
             filename = joinpath(output_dir, "efdr_comparison_replicates_$(score_col).$(format)")
+            println("  - Saving $(format) file...")
             savefig(p, filename)
             println("Saved: $filename")
         end
