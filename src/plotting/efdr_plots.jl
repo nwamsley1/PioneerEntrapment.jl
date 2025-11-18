@@ -47,6 +47,45 @@ function _auto_axis_limits(df::DataFrame, qval_col::Symbol, efdr_cols::Vector{Sy
     return (0.0, xupper), (0.0, yupper)
 end
 
+"""
+Generate approximately 4 nice tick positions for an axis with max 1 decimal place.
+"""
+function _generate_ticks(axis_max::Float64)
+    if axis_max == 0.0
+        return ([0.0], ["0"])
+    end
+
+    # Calculate a nice step size that gives ~4 ticks
+    raw_step = axis_max / 4
+
+    # Round to a nice number (0.001, 0.002, 0.005, 0.01, 0.02, 0.05, 0.1, etc.)
+    magnitude = 10.0 ^ floor(log10(raw_step))
+    normalized = raw_step / magnitude
+
+    nice_step = if normalized <= 1.5
+        1.0 * magnitude
+    elseif normalized <= 3.0
+        2.0 * magnitude
+    elseif normalized <= 7.0
+        5.0 * magnitude
+    else
+        10.0 * magnitude
+    end
+
+    # Generate ticks from 0 to axis_max
+    ticks = Float64[]
+    tick = 0.0
+    while tick <= axis_max
+        push!(ticks, tick)
+        tick += nice_step
+    end
+
+    # Format with max 1 decimal place
+    tick_labels = [tick == 0.0 ? "0" : string(round(tick, digits=1)) for tick in ticks]
+
+    return (ticks, tick_labels)
+end
+
 function plot_efdr_vs_qval(df::DataFrame, qval_col::Symbol, efdr_cols::Vector{Symbol};
                           title="Entrapment vs Decoy FDR",
                           xlabel="Decoy FDR",
@@ -165,9 +204,33 @@ function plot_efdr_comparison_replicates(dfs::Vector{DataFrame}, score_col::Symb
         global_x = (0.0, max(global_x[2], ax_x[2]))
         global_y = (0.0, max(global_y[2], ax_y[2]))
     end
-    p = plot(title=title, xlabel="Decoy FDR", ylabel="Entrapment FDR", xlims=global_x, ylims=global_y, legend=legend, size=(700, 550), dpi=300, fontfamily="Helvetica")
+
+    # Generate nice tick positions with max 1 decimal place
+    max_limit = max(global_x[2], global_y[2])
+    xtick_vals, xtick_labels = _generate_ticks(max_limit)
+    ytick_vals, ytick_labels = _generate_ticks(max_limit)
+
+    p = plot(
+        title="",
+        xlabel="",
+        ylabel="",
+        xlims=global_x,
+        ylims=global_y,
+        legend=false,
+        grid=false,
+        size=(700, 700),
+        dpi=300,
+        fontfamily="Helvetica",
+        xticks=(xtick_vals, xtick_labels),
+        yticks=(ytick_vals, ytick_labels),
+        framestyle=:box,
+        linewidth=2,
+        tickfontsize=10,
+        foreground_color_axis=:black,
+        foreground_color_border=:black
+    )
     max_val = min(global_x[2], global_y[2])
-    plot!(p, [0, max_val], [0, max_val], label="y=x", linestyle=:dash, color=:gray, alpha=0.5)
+    plot!(p, [0, max_val], [0, max_val], label="", linestyle=:dash, color=:gray, alpha=0.5)
 
     println("  - Sorting and plotting data...")
     shown_label = Dict{UnionAll,Bool}(CombinedEFDR=>false, PairedEFDR=>false)
