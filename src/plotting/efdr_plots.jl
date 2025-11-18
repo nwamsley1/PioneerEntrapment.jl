@@ -178,7 +178,7 @@ function plot_efdr_comparison_replicates(dfs::Vector{DataFrame}, score_col::Symb
 
         # Downsample if dataset is very large
         original_rows = nrow(sdf)
-        sdf = _downsample_for_plotting(sdf, qval_col, 50_000)
+        sdf = _downsample_for_plotting(sdf, qval_col, 1_000)
         if nrow(sdf) < original_rows
             println("    - Downsampled from $(original_rows) to $(nrow(sdf)) points for plotting")
         end
