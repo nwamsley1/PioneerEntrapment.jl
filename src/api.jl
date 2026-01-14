@@ -509,6 +509,8 @@ function run_efdr_analysis(prec_results_path::String, library_precursors_path::S
                           r_lib::Float64=1.0,
                           paired_stride::Int=5,
                           plot_formats::Vector{Symbol}=[:png, :pdf],
+                          plot_max_points::Union{Nothing,Int}=nothing,
+                          plot_bin_size::Union{Nothing,Real}=nothing,
                           use_fast_paired::Bool=true,
                           verbose::Bool=true,
                           entrap_species::Union{Nothing,AbstractString}=nothing)
@@ -660,13 +662,13 @@ function run_efdr_analysis(prec_results_path::String, library_precursors_path::S
         perfile_pairs = [(s, q) for (s, q) in score_qval_pairs if s in perfile_scores]
         eff_methods = entrap_species === nothing ? method_types : [CombinedEFDR]
         title_suffix = entrap_species === nothing ? "" : "(Species: $(entrap_species))"
-        save_efdr_plots(prec_results, output_dir; score_qval_pairs=perfile_pairs, method_types=eff_methods, formats=plot_formats, title_suffix=title_suffix)
+        save_efdr_plots(prec_results, output_dir; score_qval_pairs=perfile_pairs, method_types=eff_methods, formats=plot_formats, title_suffix=title_suffix, max_points=plot_max_points, bin_size=plot_bin_size)
     end
     if !isnothing(global_results_df) && !isempty(global_scores)
         global_pairs = [(s, q) for (s, q) in score_qval_pairs if s in global_scores]
         eff_methods = entrap_species === nothing ? method_types : [CombinedEFDR]
         title_suffix = entrap_species === nothing ? "" : "(Species: $(entrap_species))"
-        save_efdr_plots(global_results_df, output_dir; score_qval_pairs=global_pairs, method_types=eff_methods, formats=plot_formats, title_suffix=title_suffix)
+        save_efdr_plots(global_results_df, output_dir; score_qval_pairs=global_pairs, method_types=eff_methods, formats=plot_formats, title_suffix=title_suffix, max_points=plot_max_points, bin_size=plot_bin_size)
     end
     for (score_col, _) in score_qval_pairs
         for format in plot_formats
@@ -788,6 +790,8 @@ function run_protein_efdr_analysis(protein_results_path::String;
                                   r_lib::Float64=1.0,
                                   paired_stride::Int=5,
                                   plot_formats::AbstractVector=[:png, :pdf],
+                                  plot_max_points::Union{Nothing,Int}=nothing,
+                                  plot_bin_size::Union{Nothing,Real}=nothing,
                                   use_fast_paired::Bool=true,
                                   verbose::Bool=true,
                                   entrap_species::Union{Nothing,AbstractString}=nothing)
@@ -949,13 +953,13 @@ function run_protein_efdr_analysis(protein_results_path::String;
         perfile_pairs = [(s, q) for (s, q) in score_qval_pairs if s in perfile_scores]
         eff_methods = entrap_species === nothing ? method_types : [CombinedEFDR]
         title_suffix = entrap_species === nothing ? "" : "(Species: $(entrap_species))"
-        save_efdr_plots(protein_results, output_dir; score_qval_pairs=perfile_pairs, method_types=eff_methods, formats=plot_formats, title_suffix=title_suffix)
+        save_efdr_plots(protein_results, output_dir; score_qval_pairs=perfile_pairs, method_types=eff_methods, formats=plot_formats, title_suffix=title_suffix, max_points=plot_max_points, bin_size=plot_bin_size)
     end
     if !isnothing(global_results_df) && !isempty(global_scores)
         global_pairs = [(s, q) for (s, q) in score_qval_pairs if s in global_scores]
         eff_methods = entrap_species === nothing ? method_types : [CombinedEFDR]
         title_suffix = entrap_species === nothing ? "" : "(Species: $(entrap_species))"
-        save_efdr_plots(global_results_df, output_dir; score_qval_pairs=global_pairs, method_types=eff_methods, formats=plot_formats, title_suffix=title_suffix)
+        save_efdr_plots(global_results_df, output_dir; score_qval_pairs=global_pairs, method_types=eff_methods, formats=plot_formats, title_suffix=title_suffix, max_points=plot_max_points, bin_size=plot_bin_size)
     end
     for (score_col, _) in score_qval_pairs
         for format in plot_formats
@@ -1022,6 +1026,8 @@ function run_both_analyses(; precursor_results_path::AbstractString,
                         r_lib::Float64 = 1.0,
                         paired_stride::Int = 5,
                         plot_formats::Vector{Symbol} = [:png, :pdf],
+                        plot_max_points::Union{Nothing,Int}=nothing,
+                        plot_bin_size::Union{Nothing,Real}=nothing,
                         use_fast_paired::Bool = true,
                         verbose::Bool = true,
                         entrap_species::Union{Nothing,AbstractString}=nothing)
@@ -1030,9 +1036,9 @@ function run_both_analyses(; precursor_results_path::AbstractString,
     out_prot = joinpath(output_dir, "protein")
 
     prec = run_efdr_analysis(precursor_results_path, library_precursors_path;
-                             output_dir=out_prec, r_lib=r_lib, paired_stride=paired_stride, plot_formats=plot_formats, use_fast_paired=use_fast_paired, verbose=verbose, entrap_species=entrap_species)
+                             output_dir=out_prec, r_lib=r_lib, paired_stride=paired_stride, plot_formats=plot_formats, plot_max_points=plot_max_points, plot_bin_size=plot_bin_size, use_fast_paired=use_fast_paired, verbose=verbose, entrap_species=entrap_species)
     prot = run_protein_efdr_analysis(protein_results_path;
-                                     output_dir=out_prot, r_lib=r_lib, paired_stride=paired_stride, plot_formats=plot_formats, use_fast_paired=use_fast_paired, verbose=verbose, entrap_species=entrap_species)
+                                     output_dir=out_prot, r_lib=r_lib, paired_stride=paired_stride, plot_formats=plot_formats, plot_max_points=plot_max_points, plot_bin_size=plot_bin_size, use_fast_paired=use_fast_paired, verbose=verbose, entrap_species=entrap_species)
 
     return (precursor=prec, protein=prot)
 end

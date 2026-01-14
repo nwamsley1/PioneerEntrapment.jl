@@ -47,6 +47,10 @@ function _parse_args(args)::Dict{String,Any}
         elseif a == "--plot-formats"
             # comma-separated list, e.g. png,pdf
             d["plot_formats"] = Symbol.(split(take(), ","))
+        elseif a == "--plot-max-points"
+            d["plot_max_points"] = parse(Int, take())
+        elseif a == "--plot-bin-size"
+            d["plot_bin_size"] = parse(Float64, take())
         elseif a == "--paired-step" || a == "--paired-stride"
             d["paired_step"] = parse(Int, take())
         elseif a == "--replicates-config"
@@ -82,6 +86,8 @@ Optional:
   --outdir PATH                    (default: efdr_out)
   --r-lib FLOAT                    (default: 1.0)
   --paired-step INT                (default: 5) stride for paired EFDR
+  --plot-max-points INT            (optional binning for EFDR plots)
+  --plot-bin-size FLOAT            (optional binning for EFDR plots)
   --plot-formats LIST              (e.g., png,pdf)
   --verbose                        (enable verbose logging)
   -h, --help
@@ -136,6 +142,8 @@ function julia_main(args)::Int
         r_lib = get(parsed, "r_lib", 1.0)
         plot_formats = get(parsed, "plot_formats", Symbol[:png, :pdf])
         paired_step = get(parsed, "paired_step", 5)
+        plot_max_points = get(parsed, "plot_max_points", nothing)
+        plot_bin_size = get(parsed, "plot_bin_size", nothing)
         verbose = get(parsed, "verbose", true)
         entrap_species = get(parsed, "entrap_species", nothing)
 
@@ -156,7 +164,7 @@ function julia_main(args)::Int
                 println("Missing required --precursor-results or --library\n\n" * usage())
                 return 2
             end
-            run_efdr_analysis(pr, lib; output_dir=outdir, r_lib=r_lib, paired_stride=paired_step, plot_formats=plot_formats, verbose=verbose, entrap_species=entrap_species)
+            run_efdr_analysis(pr, lib; output_dir=outdir, r_lib=r_lib, paired_stride=paired_step, plot_formats=plot_formats, plot_max_points=plot_max_points, plot_bin_size=plot_bin_size, verbose=verbose, entrap_species=entrap_species)
             return 0
         elseif mode == "protein"
             prot = get(parsed, "protein_results", nothing)
@@ -164,7 +172,7 @@ function julia_main(args)::Int
                 println("Missing required --protein-results\n\n" * usage())
                 return 2
             end
-            run_protein_efdr_analysis(prot; output_dir=outdir, r_lib=r_lib, paired_stride=paired_step, plot_formats=plot_formats, verbose=verbose, entrap_species=entrap_species)
+            run_protein_efdr_analysis(prot; output_dir=outdir, r_lib=r_lib, paired_stride=paired_step, plot_formats=plot_formats, plot_max_points=plot_max_points, plot_bin_size=plot_bin_size, verbose=verbose, entrap_species=entrap_species)
             return 0
         elseif mode == "both"
             pr = get(parsed, "precursor_results", nothing)
@@ -174,7 +182,7 @@ function julia_main(args)::Int
                 println("Missing required inputs for both mode\n\n" * usage())
                 return 2
             end
-            run_both_analyses(; precursor_results_path=pr, library_precursors_path=lib, protein_results_path=prot, output_dir=outdir, r_lib=r_lib, paired_stride=paired_step, plot_formats=plot_formats, verbose=verbose, entrap_species=entrap_species)
+            run_both_analyses(; precursor_results_path=pr, library_precursors_path=lib, protein_results_path=prot, output_dir=outdir, r_lib=r_lib, paired_stride=paired_step, plot_formats=plot_formats, plot_max_points=plot_max_points, plot_bin_size=plot_bin_size, verbose=verbose, entrap_species=entrap_species)
             return 0
         else
             println("Invalid or missing --mode\n\n" * usage())
