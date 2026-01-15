@@ -48,12 +48,11 @@ function _bin_qval_efdr(df::DataFrame, qval_col::Symbol, efdr_cols::Vector{Symbo
     nbins = max(1, ceil(Int, qval_max / bin_size))
     bin_idx = clamp.(floor.(Int, sub[!, qval_col] ./ bin_size), 0, nbins - 1)
     sub[!, :__bin] = bin_idx
-    agg_map = Dict{Symbol,Any}()
-    agg_map[qval_col] = x -> mean(skipmissing(x))
+    agg_pairs = Pair{Symbol,Any}[qval_col => (x -> mean(skipmissing(x))) => qval_col]
     for efdr_col in efdr_cols
-        agg_map[efdr_col] = x -> agg(skipmissing(x))
+        push!(agg_pairs, efdr_col => (x -> agg(skipmissing(x))) => efdr_col)
     end
-    combined = combine(groupby(sub, :__bin), agg_map)
+    combined = combine(groupby(sub, :__bin), agg_pairs...)
     select!(combined, Not(:__bin))
     return combined
 end
