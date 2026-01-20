@@ -85,6 +85,8 @@ run_efdr_analysis(precursors, library;
     paired_stride=10,      # sampling stride for paired EFDR (only used if use_fast_paired=false)
     use_fast_paired=true,  # use fast O(n log n) implementation (default); set to false for O(n²) validation
     plot_formats=[:png, :pdf],
+    plot_max_points=200,   # optional: bin plot points for large datasets
+    # plot_bin_size=0.001, # alternative: fixed q-value bin size
     verbose=true,
 )
 ```
@@ -191,7 +193,8 @@ CLI (replicates) with TOML config (recommended):
 ```bash
 JULIA_PROJECT=. bin/pioneer-entrapment --mode replicates \
   --replicates-config scripts/replicates_example.toml \
-  --outdir ./efdr_compare --paired-step 10 --plot-formats png,pdf
+  --outdir ./efdr_compare --paired-step 10 --plot-formats png,pdf \
+  --plot-max-points 200
 ```
 
 ## Folder convenience: run both precursor and protein plots
@@ -205,6 +208,8 @@ run_efdr_plots("/path/to/results", "/path/to/library/.poin/.poin";
   paired_stride=10,
   use_fast_paired=true,  # use fast O(n log n) implementation (default)
   plot_formats=[:png, :pdf],
+  plot_max_points=200,   # optional: bin plot points for large datasets
+  # plot_bin_size=0.001, # alternative: fixed q-value bin size
   verbose=true,
 )
 ```

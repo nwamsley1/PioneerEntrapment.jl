@@ -24,6 +24,39 @@ function _auto_axis_limits(df::DataFrame, qval_col::Symbol, efdr_cols::Vector{Sy
     return (0.0, xupper), (0.0, yupper)
 end
 
+function _bin_qval_efdr(df::DataFrame, qval_col::Symbol, efdr_cols::Vector{Symbol};
+                        bin_size::Union{Nothing,Real}=nothing,
+                        max_points::Union{Nothing,Int}=nothing,
+                        agg::Function=mean,
+                        qval_max::Real=0.1)
+    if isnothing(bin_size) && isnothing(max_points)
+        return df
+    end
+    if isnothing(bin_size)
+        max_points > 0 || error("max_points must be positive when provided")
+        bin_size = qval_max / max_points
+    end
+    bin_size > 0 || error("bin_size must be positive when provided")
+
+    qvals = df[!, qval_col]
+    valid = .!ismissing.(qvals) .& (qvals .>= 0) .& (qvals .<= qval_max)
+    if !any(valid)
+        return DataFrame(qval_col => Float64[], (c => Float64[] for c in efdr_cols)...)
+    end
+    cols = [qval_col; efdr_cols]
+    sub = df[valid, cols]
+    nbins = max(1, ceil(Int, qval_max / bin_size))
+    bin_idx = clamp.(floor.(Int, sub[!, qval_col] ./ bin_size), 0, nbins - 1)
+    sub[!, :__bin] = bin_idx
+    agg_pairs = Pair{Symbol,Any}[qval_col => (x -> mean(skipmissing(x))) => qval_col]
+    for efdr_col in efdr_cols
+        push!(agg_pairs, efdr_col => (x -> agg(skipmissing(x))) => efdr_col)
+    end
+    combined = combine(groupby(sub, :__bin), agg_pairs...)
+    select!(combined, Not(:__bin))
+    return combined
+end
+
 function plot_efdr_vs_qval(df::DataFrame, qval_col::Symbol, efdr_cols::Vector{Symbol};
                           title="Entrapment vs Decoy FDR",
                           xlabel="Decoy FDR",
@@ -34,9 +67,13 @@ function plot_efdr_vs_qval(df::DataFrame, qval_col::Symbol, efdr_cols::Vector{Sy
                           ylims=nothing,
                           legend=:bottomright,
                           diagonal=true,
-                          linewidth::Real=1.5)
-    sorted_indices = sortperm(df[!, qval_col])
-    sorted_df = df[sorted_indices, :]
+                          linewidth::Real=1.5,
+                          max_points::Union{Nothing,Int}=nothing,
+                          bin_size::Union{Nothing,Real}=nothing,
+                          agg::Function=mean)
+    binned_df = _bin_qval_efdr(df, qval_col, efdr_cols; bin_size=bin_size, max_points=max_points, agg=agg)
+    sorted_indices = sortperm(binned_df[!, qval_col])
+    sorted_df = binned_df[sorted_indices, :]
     if isnothing(xlims) || isnothing(ylims)
         ax_x, ax_y = _auto_axis_limits(sorted_df, qval_col, efdr_cols)
         xlims = isnothing(xlims) ? ax_x : xlims
@@ -58,7 +95,12 @@ function plot_efdr_vs_qval(df::DataFrame, qval_col::Symbol, efdr_cols::Vector{Sy
     return p
 end
 
-function plot_efdr_comparison(df::DataFrame, score_col::Symbol, qval_col::Symbol; method_types::Vector=[CombinedEFDR, PairedEFDR], kwargs...)
+function plot_efdr_comparison(df::DataFrame, score_col::Symbol, qval_col::Symbol;
+                              method_types::Vector=[CombinedEFDR, PairedEFDR],
+                              max_points::Union{Nothing,Int}=nothing,
+                              bin_size::Union{Nothing,Real}=nothing,
+                              agg::Function=mean,
+                              kwargs...)
     efdr_cols = Symbol[]
     labels = String[]
     for method_type in method_types
@@ -72,7 +114,7 @@ function plot_efdr_comparison(df::DataFrame, score_col::Symbol, qval_col::Symbol
     end
     default_kwargs = Dict(:title => "EFDR Comparison for $(String(score_col))", :labels => labels, :linewidth => 1.5)
     merged_kwargs = merge(default_kwargs, kwargs)
-    return plot_efdr_vs_qval(df, qval_col, efdr_cols; merged_kwargs...)
+    return plot_efdr_vs_qval(df, qval_col, efdr_cols; max_points=max_points, bin_size=bin_size, agg=agg, merged_kwargs...)
 end
 
 function plot_multiple_efdr_comparisons(df::DataFrame, score_qval_pairs::Vector{Tuple{Symbol,Symbol}}; method_types::Vector=[CombinedEFDR, PairedEFDR], layout=nothing, kwargs...)
@@ -90,12 +132,19 @@ function plot_multiple_efdr_comparisons(df::DataFrame, score_qval_pairs::Vector{
     return plot(plots..., layout=layout, size=(800 * layout[2], 600 * layout[1]))
 end
 
-function save_efdr_plots(df::DataFrame, output_dir::String; score_qval_pairs::Vector{Tuple{Symbol,Symbol}}=[(:global_prob, :global_qval), (:prec_prob, :qval)], method_types::Vector=[CombinedEFDR, PairedEFDR], formats::Vector{Symbol}=[:png, :pdf], title_suffix::AbstractString="")
+function save_efdr_plots(df::DataFrame, output_dir::String;
+                         score_qval_pairs::Vector{Tuple{Symbol,Symbol}}=[(:global_prob, :global_qval), (:prec_prob, :qval)],
+                         method_types::Vector=[CombinedEFDR, PairedEFDR],
+                         formats::Vector{Symbol}=[:png, :pdf],
+                         title_suffix::AbstractString="",
+                         max_points::Union{Nothing,Int}=nothing,
+                         bin_size::Union{Nothing,Real}=nothing,
+                         agg::Function=mean)
     mkpath(output_dir)
     for (score_col, qval_col) in score_qval_pairs
         title = isempty(title_suffix) ? nothing : "EFDR Comparison for $(String(score_col)) $(title_suffix)"
         kwargs = isempty(title_suffix) ? (;) : (; title=title)
-        p = plot_efdr_comparison(df, score_col, qval_col; method_types=method_types, kwargs...)
+        p = plot_efdr_comparison(df, score_col, qval_col; method_types=method_types, max_points=max_points, bin_size=bin_size, agg=agg, kwargs...)
         for format in formats
             filename = joinpath(output_dir, "efdr_comparison_$(score_col).$(format)")
             savefig(p, filename)
