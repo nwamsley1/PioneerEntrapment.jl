@@ -34,7 +34,7 @@ function compare_efdr_methods(df::DataFrame, qval_col::Symbol, score_col::Symbol
             push!(results, (
                 threshold = threshold,
                 qval_n = nrow(qval_passing),
-                qval_actual_fdr = sum(qval_entrap_labels .> 0) / max(1, length(qval_entrap_labels)),
+                qval_actual_fdr = count(>(0), qval_entrap_labels) / max(1, length(qval_entrap_labels)),
                 combined_n = combined_result.n_passing,
                 combined_efdr = combined_result.empirical_fdr,
                 paired_n = paired_result.n_passing,
@@ -44,7 +44,7 @@ function compare_efdr_methods(df::DataFrame, qval_col::Symbol, score_col::Symbol
             push!(results, (
                 threshold = threshold,
                 qval_n = nrow(qval_passing),
-                qval_actual_fdr = sum(qval_entrap_labels .> 0) / max(1, length(qval_entrap_labels)),
+                qval_actual_fdr = count(>(0), qval_entrap_labels) / max(1, length(qval_entrap_labels)),
                 combined_n = combined_result.n_passing,
                 combined_efdr = combined_result.empirical_fdr
             ))

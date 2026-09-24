@@ -5,6 +5,7 @@ using Arrow
 
 @testset "PioneerEntrapment" begin
     include("test_entrapment_pairing.jl")
+    include("test_empty_efdr_threshold.jl")
 
     @testset "EFDR Method Tests" begin
         scores = [0.9, 0.85, 0.8, 0.75, 0.7, 0.65, 0.6, 0.55, 0.5, 0.45]
